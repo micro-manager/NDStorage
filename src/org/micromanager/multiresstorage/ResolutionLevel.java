@@ -38,8 +38,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import javax.swing.SwingUtilities;
 import mmcorej.TaggedImage;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 public final class ResolutionLevel {
 

@@ -19,9 +19,9 @@ package org.micromanager.multiresstorage;
 import java.awt.geom.Point2D;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONArray;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 /*
  * Class to manage the relationship position indices at different resolution levels

@@ -32,8 +32,8 @@ import java.nio.channels.FileChannel;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import mmcorej.TaggedImage;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 
 public class MultipageTiffReader {

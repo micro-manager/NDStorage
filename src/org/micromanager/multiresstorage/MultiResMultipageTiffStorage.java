@@ -38,9 +38,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mmcorej.TaggedImage;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONArray;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 /**
  * This class manages multiple multipage Tiff datasets, averaging multiple 2x2

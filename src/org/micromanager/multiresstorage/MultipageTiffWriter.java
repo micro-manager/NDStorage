@@ -41,9 +41,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import mmcorej.TaggedImage;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONArray;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 public class MultipageTiffWriter {
 

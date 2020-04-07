@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import mmcorej.TaggedImage;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONObject;
 
 /**
  *

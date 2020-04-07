@@ -7,8 +7,8 @@ package org.micromanager.multiresstorage;
 
 import java.util.HashMap;
 import java.util.Iterator;
-import org.json.JSONException;
-import org.json.JSONObject;
+import mmcorej.org.json.JSONException;
+import mmcorej.org.json.JSONObject;
 
 /**
  *
