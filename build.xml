@@ -1,3 +1,0 @@
-<project name="NDTiffStorage" default="jar">
-	<import file="../javalibrarybuild.xml"/>
-</project>
