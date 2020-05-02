@@ -166,7 +166,7 @@ class StorageMD {
       try {
          return summaryMD.getBoolean(TILED_STORAGE);
       } catch (JSONException ex) {
-         throw new RuntimeException("Couldnt find pixel overlap in image tags");
+         throw new RuntimeException("TiledStorage");
       }
    }
 

@@ -73,7 +73,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
    private boolean rgb_;
    private ThreadPoolExecutor writingExecutor_;
    private volatile int maxResolutionLevel_ = 0;
-   private final boolean loaded_, tiled_;
+   private boolean loaded_, tiled_;
    private ConcurrentHashMap<String, Integer> superChannelNames_ = new ConcurrentHashMap<String, Integer>();
    private CopyOnWriteArrayList<String> positions_ = new CopyOnWriteArrayList<String>();
    private Set<HashMap<String, Integer>> imageAxes_ = new HashSet<HashMap<String, Integer>>();
@@ -92,7 +92,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       //create fullResStorage
       fullResStorage_ = new ResolutionLevel(fullResDir, false, null, null, this, -1, -1, false, -1);
       summaryMD_ = fullResStorage_.getSummaryMetadata();
-      tiled_ = StorageMD.getTiledStorage(summaryMD_);
+      try {
+         tiled_ = StorageMD.getTiledStorage(summaryMD_);
+      } catch (Exception e) {
+         tiled_ = true; //Backwards compat
+      }
 
       //reconstruct map of super channel names to channel indices, and set
       //of all image axes
