@@ -364,9 +364,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     * Return a subimage of the larger stitched image at the appropriate zoom
     * level, loading only the tiles neccesary to form the subimage
     *
-    * @param channel
-    * @param slice
-    * @param frame
+    * @param axes
     * @param dsIndex 0 for full res, 1 for 2x downsample, 2 for 4x downsample,
     * etc..
     * @param x coordinate of leftmost pixel in requested resolution

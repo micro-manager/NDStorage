@@ -32,8 +32,6 @@ public interface StorageAPI {
     * 
     * @param taggedImg
     * @param axes
-    * @param row
-    * @param col 
     */
    public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes);
    
