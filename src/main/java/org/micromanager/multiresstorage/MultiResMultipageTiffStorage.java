@@ -755,7 +755,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       //get index of superchannel
 
       if (!addNew) {
-         if (superChannelNames_.contains(superChannel)) {
+         if (superChannelNames_.containsKey(superChannel)) {
             return superChannel;
          }
          //If all the axes in the per channel match the one requested, but
