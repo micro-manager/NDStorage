@@ -192,6 +192,21 @@ public final class ResolutionLevel {
       return minSliceIndex_;
    }
 
+   public boolean hasImage(int channelIndex, int sliceIndex, int frameIndex, int positionIndex) {
+      String label = channelIndex + "_" + sliceIndex + "_" + frameIndex + "_" + positionIndex;
+
+      TaggedImage image = writePendingImages_.get(label);
+      if (image != null) {
+         return true;
+      }
+
+      MultipageTiffReader reader = tiffReadersByLabel_.get(label);
+      if (reader != null) {
+         return true;
+      }
+      return false;
+   }
+
    public TaggedImage getImage(int channelIndex, int sliceIndex, int frameIndex, int positionIndex) {
       String label = channelIndex + "_" + sliceIndex + "_" + frameIndex + "_" + positionIndex;
 
