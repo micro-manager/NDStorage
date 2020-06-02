@@ -100,11 +100,32 @@ public interface StorageAPI {
     */
    public int getNumResLevels();
 
+   /**
+    * Get a single tile of a multiresolution stitched dataset
+    *
+    * @param axes HashMap mapping axis names to positions
+    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @param row row index of tile in the requested resolution
+    * @param col column index of tile in the requested resolution
+    * @return
+    */
+   public TaggedImage getTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
+
+   /**
+    * Check for a  tile of a multiresolution stitched dataset
+    *
+    * @param axes HashMap mapping axis names to positions
+    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @param row row index of tile in the requested resolution
+    * @param col column index of tile in the requested resolution
+    * @return
+    */
+   public boolean hasTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
 
    /**
     * Get a single stitched image that spans multiple tiles
     * 
-    * @param axes 
+    * @param axes HashMap mapping axis names to positions
     * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
     * @param xOffset leftmost pixel in the requested resolution level
     * @param yOffset topmost pixel in the requested resolution level
@@ -116,7 +137,25 @@ public interface StorageAPI {
            int resIndex,
            int xOffset, int yOffset,
            int imageWidth, int imageHeight);
-   
+
+   /**
+    * Check if dataset has an image with the specified axes
+    *
+    * @param axes HashMap mapping axis names to positions
+    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @return
+    */
+   public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
+
+   /**
+    * Get a single image from full resolution data
+    *
+    * @param axes
+    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @return
+    */
+   public TaggedImage getImage(HashMap<String, Integer> axes, int resolutionIndex);
+
    /**
     * Get a single image from full resolution data
     * 

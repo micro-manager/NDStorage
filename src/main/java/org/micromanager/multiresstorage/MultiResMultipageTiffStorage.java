@@ -361,6 +361,84 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
    }
 
    /**
+    * Read tile, and try deleting and try deleting slice/frame/pos indices to
+    * find correct tile This is used in the case that certain axes aren't
+    * present for certain images, so we want them to be shown for all values of
+    * the missing axis
+    *
+    * @param dsIndex
+    * @param channel
+    * @param slice
+    * @param frame
+    * @param posIndex
+    * @return
+    */
+   private boolean hasImageWithMissingAxes(int dsIndex, int channel,
+                                                Integer slice, Integer frame, int posIndex) {
+      ResolutionLevel storage;
+      if (dsIndex == 0) {
+         storage = fullResStorage_;
+      } else {
+         if (lowResStorages_.get(dsIndex) == null) {
+            return false;
+         }
+         storage = lowResStorages_.get(dsIndex);
+      }
+      return storage.hasImage(channel,
+              slice != null ? slice : 0,
+              frame != null ? frame : 0,
+              posIndex);
+   }
+
+   @Override
+   public boolean hasTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col) {
+      Integer frame = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : null;
+      Integer slice = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : null;
+      String superChannelName = getSuperChannelName(axes, false);
+      int channel = superChannelNames_.get(superChannelName);
+
+      Integer posIndex;
+      if (resIndex == 0) {
+         if (posManager_ == null) {
+            posIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) :
+                    (tiled_ ? null : 0);
+         } else {
+            posIndex = posManager_.getPositionIndexFromTilePosition(resIndex, row, col);
+         }
+      } else {
+         posIndex = posManager_.getPositionIndexFromTilePosition(resIndex, row, col);
+      }
+      if (posIndex == null) {
+         return false;
+      }
+      return hasImageWithMissingAxes(resIndex, channel, slice, frame, posIndex);
+   }
+
+   @Override
+   public TaggedImage getTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col) {
+      Integer frame = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : null;
+      Integer slice = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : null;
+      String superChannelName = getSuperChannelName(axes, false);
+      int channel = superChannelNames_.get(superChannelName);
+
+      Integer posIndex;
+      if (resIndex == 0) {
+         if (posManager_ == null) {
+            posIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) :
+                    (tiled_ ? null : 0);
+         } else {
+            posIndex = posManager_.getPositionIndexFromTilePosition(resIndex, row, col);
+         }
+      } else {
+         posIndex = posManager_.getPositionIndexFromTilePosition(resIndex, row, col);
+      }
+      if (posIndex == null) {
+         return null;
+      }
+      return readImageWithMissingAxes(resIndex, channel, slice, frame, posIndex);
+   }
+
+   /**
     * Return a subimage of the larger stitched image at the appropriate zoom
     * level, loading only the tiles neccesary to form the subimage
     *
@@ -791,6 +869,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     */
    public void putImage(TaggedImage ti, HashMap<String, Integer> axes) {
       try {
+         //Make a local copy
+         axes = new HashMap<String, Integer>(axes);
          List<Future> writeFinishedList = new ArrayList<Future>();
          imageAxes_.add(axes);
 
@@ -890,8 +970,30 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       }
    }
 
+   public boolean hasImage(HashMap<String, Integer> axes, int downsampleIndex) {
+      //Convert axes to the 4 axes used by underlying storage by adding in
+      //p z t as needed and converting c + remaining to superchannel
+      axes = (HashMap<String, Integer>) axes.clone();
+      int frame = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
+      int slice = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
+      int position = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
+      int superChannel = superChannelNames_.get(getSuperChannelName(axes, false));
+      if (downsampleIndex == 0) {
+         return fullResStorage_.hasImage(superChannel, slice, frame, position);
+      } else {
+         return lowResStorages_.containsKey(downsampleIndex) && lowResStorages_.get(downsampleIndex)
+                 .hasImage(superChannel, slice, frame, position);
+      }
+   }
+
    @Override
    public TaggedImage getImage(HashMap<String, Integer> axes) {
+      //full resolution
+      return getImage(axes, 0);
+   }
+
+                               @Override
+   public TaggedImage getImage(HashMap<String, Integer> axes, int dsIndex) {
       //Convert axes to the 4 axes used by underlying storage by adding in
       //p z t as needed and converting c + remaining to superchannel
       axes = (HashMap<String, Integer>) axes.clone();
@@ -900,7 +1002,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       int position = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
       int superChannel = superChannelNames_.get(getSuperChannelName(axes, false));
       //return a single tile from the full res image
-      return fullResStorage_.getImage(superChannel, slice, frame, position);
+      if (dsIndex == 0) {
+         return fullResStorage_.getImage(superChannel, slice, frame, position);
+      } else {
+         return lowResStorages_.get(dsIndex).getImage(superChannel, slice, frame, position);
+      }
    }
 
    public void finishedWriting() {
