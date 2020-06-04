@@ -26,6 +26,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.CharBuffer;
@@ -180,17 +181,17 @@ public class MultipageTiffWriter {
       return writingExecutor_.submit(writingTask);
    }
 
-   private Future fileChannelWrite(final ByteBuffer buffer, final long position) {
+   private Future fileChannelWrite(final Buffer buffer, final long position) {
       return executeWritingTask(
               new Runnable() {
          @Override
          public void run() {
             try {
                buffer.rewind();
-               fileChannel_.write(buffer, position);
+               fileChannel_.write((ByteBuffer) buffer, position);
                fileChannel_.force(false);
                if (buffer.limit() == currentImageByteBufferCapacity_) {
-                  currentImageByteBuffers_.offer(buffer);
+                  currentImageByteBuffers_.offer((ByteBuffer) buffer);
                }
             } catch (ClosedChannelException e) {
                throw new RuntimeException(e);
@@ -547,18 +548,19 @@ public class MultipageTiffWriter {
    }
 
    private ByteBuffer getPixelBuffer(Object pixels) throws IOException {
-      if (rgb_) {
+      try {
+         if (rgb_) {
 //         if (byteDepth_ == 1) {
-         //Original pix in RGBA format, convert to rgb for storage
-         byte[] originalPix = (byte[]) pixels;
-         byte[] rgbPix = new byte[originalPix.length * 3 / 4];
-         int numPix = originalPix.length / 4;
-         for (int tripletIndex = 0; tripletIndex < numPix; tripletIndex++) {
-            rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4];
-            rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 1];
-            rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 + 2];
-         }
-         return ByteBuffer.wrap(rgbPix);
+            //Original pix in RGBA format, convert to rgb for storage
+            byte[] originalPix = (byte[]) pixels;
+            byte[] rgbPix = new byte[originalPix.length * 3 / 4];
+            int numPix = originalPix.length / 4;
+            for (int tripletIndex = 0; tripletIndex < numPix; tripletIndex++) {
+               rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4];
+               rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 1];
+               rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 + 2];
+            }
+            return ByteBuffer.wrap(rgbPix);
 //         } 
 //         else {
 //            short[] originalPix = (short[]) pixels;
@@ -582,16 +584,32 @@ public class MultipageTiffWriter {
 //            buffer.asShortBuffer().put(rgbaPix);
 //            return buffer;
 //         }
-      } else if (byteDepth_ == 1) {
-         return ByteBuffer.wrap((byte[]) pixels);
-      } else {
-         short[] pix = (short[]) pixels;
-         ByteBuffer buffer = allocateByteBufferMemo(pix.length * 2);
-         buffer.rewind();
-         buffer.asShortBuffer().put(pix);
-         return buffer;
+         } else if (byteDepth_ == 1) {
+            return ByteBuffer.wrap((byte[]) pixels);
+         } else {
+//            System.out.println("Java version " + getVersion());
+            short[] pix = (short[]) pixels;
+            Buffer buffer = allocateByteBufferMemo(pix.length * 2);
+            buffer.rewind();
+            ((ByteBuffer) buffer).asShortBuffer().put(pix);
+            return (ByteBuffer) buffer;
+         }
+      } catch (Exception e) {
+         System.err.println(e);
+         e.printStackTrace();
+         throw new RuntimeException(e);
       }
    }
+
+//   private static int getVersion() {
+//      String version = System.getProperty("java.version");
+//      if(version.startsWith("1.")) {
+//         version = version.substring(2, 3);
+//      } else {
+//         int dot = version.indexOf(".");
+//         if(dot != -1) { version = version.substring(0, dot); }
+//      } return Integer.parseInt(version);
+//   }
 
    private void processSummaryMD(JSONObject summaryMD) {
          //Tiff resolution tag values
