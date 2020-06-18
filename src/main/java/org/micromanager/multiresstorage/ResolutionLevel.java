@@ -32,10 +32,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import javax.swing.SwingUtilities;
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONException;
@@ -52,7 +49,7 @@ public final class ResolutionLevel {
    private volatile boolean finished_ = false;
    private int lastAcquiredPosition_ = 0;
    private String summaryMetadataString_ = null;
-   private ThreadPoolExecutor writingExecutor_;
+   private ExecutorService writingExecutor_;
    private int maxSliceIndex_ = 0, maxFrameIndex_ = 0, maxChannelIndex_ = 0, minSliceIndex_ = 0;
    // Images currently being written (need to keep around so that they can be
    // returned upon request via getImage()). The data structure must be
@@ -70,8 +67,8 @@ public final class ResolutionLevel {
    private  boolean rgb_;
 
    public ResolutionLevel(String dir, boolean newDataSet, JSONObject summaryMetadata,
-           ThreadPoolExecutor writingExecutor, MultiResMultipageTiffStorage masterMultiRes,
-           int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
+                          ExecutorService writingExecutor, MultiResMultipageTiffStorage masterMultiRes,
+                          int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
       masterMultiResStorage_ = masterMultiRes;
       writingExecutor_ = writingExecutor;
       separateMetadataFile_ = false;
@@ -112,10 +109,6 @@ public final class ResolutionLevel {
 
    public int getNumChannels() {
       return maxChannelIndex_ + 1;
-   }
-
-   public ThreadPoolExecutor getWritingExecutor() {
-      return writingExecutor_;
    }
 
    private void openExistingDataSet() {
