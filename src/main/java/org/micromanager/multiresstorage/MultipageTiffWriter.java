@@ -35,12 +35,7 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedList;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import mmcorej.TaggedImage;
@@ -88,7 +83,7 @@ public class MultipageTiffWriter {
    private ResolutionLevel masterMPTiffStorage_;
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
-   private ThreadPoolExecutor writingExecutor_;
+   private ExecutorService writingExecutor_;
    private long filePosition_ = 0;
    private long indexMapPosition_; //current position of the dynamically written index map
    private long indexMapFirstEntry_; // mark position of first entry so that number of entries can be written at end
@@ -111,11 +106,11 @@ public class MultipageTiffWriter {
 
    public MultipageTiffWriter(String directory, String filename,
            JSONObject summaryMD, ResolutionLevel mpTiffStorage,
-           boolean splitByPositions, ThreadPoolExecutor writingExecutor,
+           boolean splitByPositions, ExecutorService writingExecutor,
            int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
       displayStorer_ = false;
       masterMPTiffStorage_ = mpTiffStorage;
-      reader_ = new MultipageTiffReader(summaryMD);
+      reader_ = new MultipageTiffReader(summaryMD, byteDepth);
       File f = new File(directory + "/" + filename);
       filename_ = directory + "/" + filename;
 

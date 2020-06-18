@@ -68,10 +68,10 @@ public class MultipageTiffReader {
    /**
     * This constructor is used for a file that is currently being written
     */
-   public MultipageTiffReader(JSONObject summaryMD) {
+   public MultipageTiffReader(JSONObject summaryMD, int byteDepth) {
       summaryMetadata_ = summaryMD;
       byteOrder_ = MultipageTiffWriter.BYTE_ORDER;
-//      getRGBAndByteDepth(summaryMD);
+      byteDepth_ = byteDepth;
    }
    
    public void setIndexMap(ConcurrentHashMap<String,Long> indexMap) {
@@ -404,12 +404,15 @@ public class MultipageTiffReader {
       } else {
          if (byteDepth_ == 1) {
             return new TaggedImage(pixelBuffer.array(), md);
-         } else {
+         } else if (byteDepth_ == 2) {
             short[] pix = new short[pixelBuffer.capacity()/2];
             for (int i = 0; i < pix.length; i++ ) {
                pix[i] = pixelBuffer.getShort(i*2);
             }
             return new TaggedImage(pix, md);
+         } else {
+            System.err.println("invalid byte depth");
+            throw new RuntimeException("invalid byte depth");
          }
       }
    }
