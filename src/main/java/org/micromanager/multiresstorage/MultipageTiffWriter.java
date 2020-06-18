@@ -32,6 +32,8 @@ import java.nio.ByteOrder;
 import java.nio.CharBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -160,22 +162,77 @@ public class MultipageTiffWriter {
       writeMMHeaderAndSummaryMD(summaryMD);
    }
 
-   private ByteBuffer allocateByteBuffer(int capacity) {
-      return ByteBuffer.allocateDirect(capacity).order(BYTE_ORDER);
+
+   //
+   // Buffer allocation and recycling
+   //
+
+   // The idea here is to recycle the direct buffers for image pixels, because
+   // allocation is slow. We do not need a large pool,
+   // because the only aim is to avoid situations where allocation is limiting
+   // at steady state. If writing is, on average, faster than incoming images,
+   // the pool should always have a buffer ready for a new request.
+   // Ideally we would also evict unused buffers after a timeout, so as not to
+   // leak memory after writing has concluded.
+
+   private static final int BUFFER_DIRECT_THRESHOLD = 1024;
+   private static ByteBuffer allocateByteBuffer(int capacity) {
+      ByteBuffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
+              ByteBuffer.allocateDirect(capacity) :
+              ByteBuffer.allocate(capacity);
+      return b.order(BYTE_ORDER);
    }
 
-   private BlockingQueue<ByteBuffer> currentImageByteBuffers_ = new LinkedBlockingQueue<ByteBuffer>(10);
-   private int currentImageByteBufferCapacity_ = 0;
+   private static final int BUFFER_POOL_SIZE =
+           System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
+   private static final Deque<ByteBuffer> pooledBuffers_;
+   static {
+      if (BUFFER_POOL_SIZE > 0) {
+         pooledBuffers_ = new ArrayDeque<>(BUFFER_POOL_SIZE);
+      }
+      else {
+         pooledBuffers_ = null;
+      }
+   }
+   private static int pooledBufferCapacity_ = 0;
 
-   private ByteBuffer allocateByteBufferMemo(int capacity) {
-      if (capacity != currentImageByteBufferCapacity_) {
-         currentImageByteBuffers_.clear();
-         currentImageByteBufferCapacity_ = capacity;
+   private static ByteBuffer getLargeBuffer(int capacity) {
+      if (BUFFER_POOL_SIZE == 0) {
+         return allocateByteBuffer(capacity);
       }
 
-      ByteBuffer cachedBuf = currentImageByteBuffers_.poll();
-      return (cachedBuf != null) ? cachedBuf : allocateByteBuffer(capacity);
+      synchronized (MultipageTiffWriter.class) {
+         if (capacity != pooledBufferCapacity_) {
+            pooledBuffers_.clear();
+            pooledBufferCapacity_ = capacity;
+         }
+
+         // Recycle in LIFO order (smaller images may still be in L3 cache)
+         ByteBuffer b = pooledBuffers_.pollFirst();
+         if (b != null) {
+            // Ensure correct byte order in case recycled from other source
+            b.order(BYTE_ORDER).clear();
+            return b;
+         }
+      }
+      return allocateByteBuffer(capacity);
    }
+
+   private static void tryRecycleLargeBuffer(ByteBuffer b) {
+      // Keep up to BUFFER_POOL_SIZE direct buffers of the current size
+      if (BUFFER_POOL_SIZE == 0 || !b.isDirect()) {
+         return;
+      }
+      synchronized (MultipageTiffWriter.class) {
+         if (b.capacity() == pooledBufferCapacity_) {
+            if (pooledBuffers_.size() == BUFFER_POOL_SIZE) {
+               pooledBuffers_.removeLast(); // Discard oldest
+            }
+            pooledBuffers_.addFirst(b);
+         }
+      }
+   }
+
 
    private Future executeWritingTask(Runnable writingTask) {
       return writingExecutor_.submit(writingTask);
@@ -189,15 +246,13 @@ public class MultipageTiffWriter {
             try {
                buffer.rewind();
                fileChannel_.write((ByteBuffer) buffer, position);
-               fileChannel_.force(false);
-               if (buffer.limit() == currentImageByteBufferCapacity_) {
-                  currentImageByteBuffers_.offer((ByteBuffer) buffer);
-               }
+//               fileChannel_.force(false);
             } catch (ClosedChannelException e) {
                throw new RuntimeException(e);
             } catch (IOException e) {
                throw new RuntimeException(e);
             }
+            tryRecycleLargeBuffer((ByteBuffer) buffer);
          }
       });
    }
@@ -207,16 +262,14 @@ public class MultipageTiffWriter {
               new Runnable() {
          @Override
          public void run() {
+
             try {
                fileChannel_.write(buffers);
-               fileChannel_.force(false);
-               for (ByteBuffer buffer : buffers) {
-                  if (buffer.limit() == currentImageByteBufferCapacity_) {
-                     currentImageByteBuffers_.offer(buffer);
-                  }
-               }
             } catch (IOException e) {
                throw new RuntimeException(e);
+            }
+            for (ByteBuffer buffer : buffers) {
+               tryRecycleLargeBuffer(buffer);
             }
          }
       });
@@ -589,7 +642,7 @@ public class MultipageTiffWriter {
          } else {
 //            System.out.println("Java version " + getVersion());
             short[] pix = (short[]) pixels;
-            Buffer buffer = allocateByteBufferMemo(pix.length * 2);
+            Buffer buffer = getLargeBuffer(pix.length * 2);
             buffer.rewind();
             ((ByteBuffer) buffer).asShortBuffer().put(pix);
             return (ByteBuffer) buffer;

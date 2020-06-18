@@ -353,8 +353,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
          }
          storage = lowResStorages_.get(dsIndex);
       }
-
-      return storage.getImage(channel, 
+      return storage.getImage(channel,
               slice != null ? slice : 0, 
               frame != null ? frame : 0, 
               posIndex);
