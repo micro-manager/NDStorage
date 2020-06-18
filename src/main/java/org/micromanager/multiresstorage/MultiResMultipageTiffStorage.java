@@ -28,13 +28,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mmcorej.TaggedImage;
@@ -71,7 +65,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
    private String uniqueAcqName_;
    private int byteDepth_;
    private boolean rgb_;
-   private ThreadPoolExecutor writingExecutor_;
+   private ExecutorService writingExecutor_;
    private volatile int maxResolutionLevel_ = 0;
    private boolean loaded_, tiled_;
    private ConcurrentHashMap<String, Integer> superChannelNames_ = new ConcurrentHashMap<String, Integer>();
@@ -211,8 +205,12 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       prefix_ = name;
 
       loaded_ = false;
-      writingExecutor_ = new ThreadPoolExecutor(1, 1, 0, TimeUnit.NANOSECONDS,
-              new LinkedBlockingQueue<java.lang.Runnable>());
+      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
+         @Override
+         public Thread newThread(Runnable r) {
+            return new Thread(r, "Multipage Tiff data writing executor");
+         }
+      });
       try {
          //make a copy in case tag changes are needed later
          summaryMD_ = new JSONObject(summaryMetadata.toString());
@@ -353,8 +351,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
          }
          storage = lowResStorages_.get(dsIndex);
       }
-
-      return storage.getImage(channel, 
+      return storage.getImage(channel,
               slice != null ? slice : 0, 
               frame != null ? frame : 0, 
               posIndex);
