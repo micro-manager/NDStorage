@@ -899,10 +899,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
 //         addResolutionsUpTo(maxResIndex);
 //         writeFinishedList.addAll(addToLowResStorage(ti, tIndex, zIndex,
 //                 superCIndex, 0, pIndex, row, col));
-         for (Future f : writeFinishedList) {
-            f.get();
-         }
-      } catch (IOException | ExecutionException | InterruptedException ex) {
+
+//         for (Future f : writeFinishedList) {
+//            f.get();
+//         }
+      } catch (IOException ex) {
          throw new RuntimeException(ex.toString());
       }
    }
@@ -911,7 +912,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     * This version is called by programs doing dynamic stitching (i.e.
     * micro-magellan). axes must contain "position" mapping to a desired position index
     *
-    * Don't return until all images have been written to disk
     */
    public void putImage(TaggedImage ti, HashMap<String, Integer> axes, int row, int col) {
       try {
@@ -959,9 +959,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
                     superChannelNames_.get(superChannelName), 0, pIndex, row, col));
          }
 
-         for (Future f : writeFinishedList) {
-            f.get();
-         }
+//         for (Future f : writeFinishedList) {
+//            f.get();
+//         }
       } catch (IOException | ExecutionException | InterruptedException ex) {
          throw new RuntimeException(ex.toString());
       }

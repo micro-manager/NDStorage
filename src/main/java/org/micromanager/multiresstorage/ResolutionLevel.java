@@ -559,10 +559,6 @@ public final class ResolutionLevel {
          return list;
       }
 
-      public int getCurrentFrame() {
-         return currentFrame_;
-      }
-
       public Future writeImage(TaggedImage img, int tIndex,
               int cIndex, int zIndex, int posIndex) throws IOException {
          //check if current writer is out of space, if so, make a new one
