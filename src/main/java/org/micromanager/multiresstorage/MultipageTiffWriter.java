@@ -43,6 +43,8 @@ import mmcorej.org.json.JSONArray;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
+import javax.swing.*;
+
 public class MultipageTiffWriter {
 
 //   private static final long BYTES_PER_MEG = 1048576;
@@ -145,6 +147,8 @@ public class MultipageTiffWriter {
                }
             }
          }).start();
+         JOptionPane.showMessageDialog(null, "Insufficient space on disk to write data",
+                 "Error", JOptionPane.ERROR_MESSAGE);
          throw new RuntimeException("Insufficent space on disk: no room to write data");
       }
       fileChannel_ = raFile_.getChannel();
