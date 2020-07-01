@@ -36,6 +36,8 @@ import mmcorej.org.json.JSONArray;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
+import javax.swing.*;
+
 /**
  * This class manages multiple multipage Tiff datasets, averaging multiple 2x2
  * squares of pixels to create successively lower resolutions until the
@@ -260,6 +262,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       File dirrr = new File(dir);
       if (!dirrr.exists()) {
          if (!dirrr.mkdirs()) {
+            JOptionPane.showMessageDialog(null, "Couldn't create directory " + dir);
             throw new RuntimeException("Unable to create directory " + dir);
          }
       }
