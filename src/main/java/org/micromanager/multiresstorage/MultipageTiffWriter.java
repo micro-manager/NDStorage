@@ -175,42 +175,45 @@ public class MultipageTiffWriter {
    // leak memory after writing has concluded.
 
    private static final int BUFFER_DIRECT_THRESHOLD = 1024;
-   private static ByteBuffer allocateByteBuffer(int capacity) {
-      ByteBuffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
+   private static Buffer allocateByteBuffer(int capacity) {
+      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
               ByteBuffer.allocateDirect(capacity) :
               ByteBuffer.allocate(capacity);
-      return b.order(BYTE_ORDER);
+      b = ((ByteBuffer) b).order(BYTE_ORDER);
+      return b;
    }
 
    private static final int BUFFER_POOL_SIZE =
            System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
-   private static final Deque<ByteBuffer> pooledBuffers_;
+   private static final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
    static {
       if (BUFFER_POOL_SIZE > 0) {
-         pooledBuffers_ = new ArrayDeque<>(BUFFER_POOL_SIZE);
+         pooledBuffers_ = new ConcurrentHashMap<Integer, Deque<ByteBuffer>>();
       }
       else {
          pooledBuffers_ = null;
       }
    }
-   private static int pooledBufferCapacity_ = 0;
 
-   private static ByteBuffer getLargeBuffer(int capacity) {
+   private static Buffer getLargeBuffer(int capacity) {
       if (BUFFER_POOL_SIZE == 0) {
-         return allocateByteBuffer(capacity);
+         Buffer b =  allocateByteBuffer(capacity);
+         return b;
       }
 
       synchronized (MultipageTiffWriter.class) {
-         if (capacity != pooledBufferCapacity_) {
-            pooledBuffers_.clear();
-            pooledBufferCapacity_ = capacity;
+
+         if (!pooledBuffers_.containsKey(capacity)) {
+            pooledBuffers_.put(capacity, new ArrayDeque<>(BUFFER_POOL_SIZE));
          }
 
          // Recycle in LIFO order (smaller images may still be in L3 cache)
-         ByteBuffer b = pooledBuffers_.pollFirst();
+         Buffer b = pooledBuffers_.get(capacity).pollFirst();
+
          if (b != null) {
             // Ensure correct byte order in case recycled from other source
-            b.order(BYTE_ORDER).clear();
+            ((ByteBuffer)b).order(BYTE_ORDER);
+            b.clear();
             return b;
          }
       }
@@ -223,12 +226,10 @@ public class MultipageTiffWriter {
          return;
       }
       synchronized (MultipageTiffWriter.class) {
-         if (b.capacity() == pooledBufferCapacity_) {
-            if (pooledBuffers_.size() == BUFFER_POOL_SIZE) {
-               pooledBuffers_.removeLast(); // Discard oldest
+            if (pooledBuffers_.get(b.capacity()).size() == BUFFER_POOL_SIZE) {
+               pooledBuffers_.get(b.capacity()).removeLast(); // Discard oldest
             }
-            pooledBuffers_.addFirst(b);
-         }
+         pooledBuffers_.get(b.capacity()).addFirst(b);
       }
    }
 
@@ -292,7 +293,7 @@ public class MultipageTiffWriter {
       long maxImagesInFile = MAX_FILE_SIZE / bytesPerImagePixels_;
       long indexMapSpace = 8 + 20 * maxImagesInFile;
 
-      ByteBuffer headerBuffer = allocateByteBuffer(40);
+      ByteBuffer headerBuffer = (ByteBuffer) allocateByteBuffer(40);
       //8 bytes for file header
       if (BYTE_ORDER.equals(ByteOrder.BIG_ENDIAN)) {
          headerBuffer.asCharBuffer().put(0, (char) 0x4d4d);
@@ -316,7 +317,7 @@ public class MultipageTiffWriter {
       headerBuffer.putInt(32, SUMMARY_MD_HEADER);
       headerBuffer.putInt(36, mdLength);
 
-      ByteBuffer indexMapBuffer = allocateByteBuffer((int) indexMapSpace);
+      ByteBuffer indexMapBuffer = (ByteBuffer) allocateByteBuffer((int) indexMapSpace);
       indexMapBuffer.putInt(0, INDEX_MAP_HEADER);
       indexMapBuffer.putInt(4, (int) maxImagesInFile);
       indexMapPosition_ = headerBuffer.capacity() + mdLength + 8;
@@ -361,7 +362,7 @@ public class MultipageTiffWriter {
       //the end of the index map. It is added here for backwards compatibility of reading
       //using versions of MM before 6-6-2014. Without it, old versions wouldn't correctly read image 0_0_0_0
       int numImages = (int) ((indexMapPosition_ - indexMapFirstEntry_) / 20);
-      ByteBuffer indexMapNumEntries = allocateByteBuffer(4);
+      ByteBuffer indexMapNumEntries = (ByteBuffer) allocateByteBuffer(4);
       indexMapNumEntries.putInt(0, numImages);
       Future finished = fileChannelWrite(indexMapNumEntries, indexMapFirstEntry_ - 4);
       finished.get();
@@ -415,6 +416,7 @@ public class MultipageTiffWriter {
    public Future writeImage(TaggedImage img, int t, int c, int z, int p) throws IOException {
       long offset = filePosition_;
       boolean shiftByByte = writeIFD(img);
+
       Future f = writeBuffers();
 
       String label = c + "_" + z + "_" + t + "_" + p;
@@ -422,6 +424,7 @@ public class MultipageTiffWriter {
       addToIndexMap(label, offset);
       //Make IFDs start on word
       if (shiftByByte) {
+
          f = executeWritingTask(new Runnable() {
             @Override
             public void run() {
@@ -439,7 +442,7 @@ public class MultipageTiffWriter {
    private void addToIndexMap(String label, long offset) {
       //If a duplicate label is received, forget about the previous one
       //this allows overwriting of images without loss of data
-      ByteBuffer buffer = allocateByteBuffer(20);
+      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(20);
       String[] indices = label.split("_");
       for (int i = 0; i < 4; i++) {
          buffer.putInt(4 * i, Integer.parseInt(indices[i]));
@@ -496,7 +499,7 @@ public class MultipageTiffWriter {
          throw new RuntimeException("Problem writing downsampled display data for file" + filename_
                  + "\n But full resolution data is unaffected");
       }
-      ByteBuffer pixBuff = getPixelBuffer(pixels);
+      Buffer pixBuff = getPixelBuffer(pixels);
       Future writingDone = fileChannelWrite(pixBuff, pixelOffset);
       return writingDone;
    }
@@ -514,7 +517,8 @@ public class MultipageTiffWriter {
       int totalBytes = 2 + numEntries * 12 + 4 + (rgb_ ? 6 : 0) + 16 + mdBytes.length + bytesPerImagePixels_;
       int IFDandBitDepthBytes = 2 + numEntries * 12 + 4 + (rgb_ ? 6 : 0);
 
-      ByteBuffer ifdBuffer = allocateByteBuffer(IFDandBitDepthBytes);
+      ByteBuffer ifdBuffer = (ByteBuffer) allocateByteBuffer(IFDandBitDepthBytes);
+
       CharBuffer charView = ifdBuffer.asCharBuffer();
 
       long tagDataOffset = filePosition_ + 2 + numEntries * 12 + 4;
@@ -591,7 +595,7 @@ public class MultipageTiffWriter {
    }
 
    private ByteBuffer getResolutionValuesBuffer() throws IOException {
-      ByteBuffer buffer = allocateByteBuffer(16);
+      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(16);
       buffer.putInt(0, (int) resNumerator_);
       buffer.putInt(4, (int) resDenomenator_);
       buffer.putInt(8, (int) resNumerator_);
@@ -698,14 +702,14 @@ public class MultipageTiffWriter {
    }
 
    private void writeNullOffsetAfterLastImage() throws IOException, InterruptedException, ExecutionException {
-      ByteBuffer buffer = allocateByteBuffer(4);
+      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(4);
       buffer.putInt(0, 0);
       Future finished = fileChannelWrite(buffer, nextIFDOffsetLocation_);
       finished.get();
    }
 
    private void writeDisplaySettings(JSONObject displaySettings) throws IOException, InterruptedException, ExecutionException {
-      ByteBuffer header = allocateByteBuffer(8);
+      ByteBuffer header = (ByteBuffer) allocateByteBuffer(8);
       ByteBuffer buffer = ByteBuffer.wrap(getBytesFromString(displaySettings.toString()));
       int numReservedBytes = buffer.capacity();
       header.putInt(0, DISPLAY_SETTINGS_HEADER);
@@ -713,7 +717,7 @@ public class MultipageTiffWriter {
       fileChannelWrite(header, filePosition_);
       fileChannelWrite(buffer, filePosition_ + 8);
 
-      ByteBuffer offsetHeader = allocateByteBuffer(8);
+      ByteBuffer offsetHeader = (ByteBuffer) allocateByteBuffer(8);
       offsetHeader.putInt(0, DISPLAY_SETTINGS_OFFSET_HEADER);
       offsetHeader.putInt(4, (int) filePosition_);
       Future done = fileChannelWrite(offsetHeader, 16);

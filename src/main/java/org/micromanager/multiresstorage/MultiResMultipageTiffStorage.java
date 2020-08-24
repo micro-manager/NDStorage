@@ -73,6 +73,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
    private ConcurrentHashMap<String, Integer> superChannelNames_ = new ConcurrentHashMap<String, Integer>();
    private CopyOnWriteArrayList<String> positions_ = new CopyOnWriteArrayList<String>();
    private Set<HashMap<String, Integer>> imageAxes_ = new HashSet<HashMap<String, Integer>>();
+   private final Integer externalMaxResLevel_;
 
    private String prefix_;
 
@@ -81,6 +82,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     * directory
     */
    public MultiResMultipageTiffStorage(String dir) throws IOException {
+      externalMaxResLevel_ = null;
       loaded_ = true;
       directory_ = dir;
       finished_ = true;
@@ -195,7 +197,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     * Construcotr for new storage that doesn't parse summary metadata
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
-           int overlapX, int overlapY, int width, int height, int byteDepth, boolean tiled) {
+           int overlapX, int overlapY, int width, int height, int byteDepth, boolean tiled,
+                                       Integer externalMaxResLevel) {
+      externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
       yOverlap_ = overlapY;
@@ -395,6 +399,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       Integer frame = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : null;
       Integer slice = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : null;
       String superChannelName = getSuperChannelName(axes, false);
+      if (superChannelName == null) {
+         return false;
+      }
       int channel = superChannelNames_.get(superChannelName);
 
       Integer posIndex;
@@ -593,20 +600,20 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     * create an additional lower resolution levels for zooming purposes
     */
    private void addResolutionsUpTo(int index) throws InterruptedException, ExecutionException {
-      if (index <= maxResolutionLevel_) {
-         return;
-      }
-      int oldLevel = maxResolutionLevel_;
-      maxResolutionLevel_ = index;
-      //update position manager to reflect addition of new resolution level
-      posManager_.updateLowerResolutionNodes(maxResolutionLevel_);
-      ArrayList<Future> finished = new ArrayList<Future>();
-      for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
-         populateNewResolutionLevel(finished, i);
-         for (Future f : finished) {
-            f.get();
+         if (index <= maxResolutionLevel_) {
+            return;
          }
-      }
+         int oldLevel = maxResolutionLevel_;
+         maxResolutionLevel_ = index;
+         //update position manager to reflect addition of new resolution level
+         posManager_.updateLowerResolutionNodes(maxResolutionLevel_);
+         ArrayList<Future> finished = new ArrayList<Future>();
+         for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
+            populateNewResolutionLevel(finished, i);
+            for (Future f : finished) {
+               f.get();
+            }
+         }
    }
 
    private void downsample(Object currentLevelPix, Object previousLevelPix, int fullResPositionIndex, int resolutionIndex) {
@@ -743,6 +750,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
          //Create pixels or get appropriate pixels to add to
          TaggedImage existingImage = lowResStorages_.get(resolutionIndex).getImage(channelIndex, zIndex, tIndex,
                  posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex));
+
          Object currentLevelPix;
          if (existingImage == null) {
             if (rgb_) {
@@ -761,6 +769,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
          //store this tile in the storage class correspondign to this resolution
          try {
             if (existingImage == null) {     //Image doesn't yet exist at this level, so add it
+
                //create a copy of tags so tags from a different res level arent inadverntanly modified
                // while waiting for being written to disk
                JSONObject tags = new JSONObject(img.tags.toString());
@@ -773,12 +782,13 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
                        prefix_, tIndex, channelIndex, zIndex, positionIndex);
 
                //need to make sure this one gets written before others can be overwritten
-               f.get();
+//               f.get();
             } else {
                //Image already exists, only overwrite pixels to include new tiles
                writeFinishedList.addAll(lowResStorages_.get(resolutionIndex).overwritePixels(currentLevelPix,
                        channelIndex, zIndex, tIndex, posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex)));
             }
+
          } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Couldnt modify tags for lower resolution level");
@@ -952,7 +962,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
             //check if maximum resolution level needs to be updated based on full size of image
             long fullResPixelWidth = getNumCols() * tileWidth_;
             long fullResPixelHeight = getNumRows() * tileHeight_;
-            int maxResIndex = (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
+            int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
+                    (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
                     / 4)) / Math.log(2));
 
             //Make sure positon manager knows about potential new rows/cols
