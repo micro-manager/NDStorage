@@ -988,7 +988,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       int frame = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
       int slice = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
       int position = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
-      int superChannel = superChannelNames_.get(getSuperChannelName(axes, false));
+      String name = getSuperChannelName(axes, false);
+      if (name == null) {
+         return false;
+      }
+      int superChannel = superChannelNames_.get(name);
       if (downsampleIndex == 0) {
          return fullResStorage_.hasImage(superChannel, slice, frame, position);
       } else {
