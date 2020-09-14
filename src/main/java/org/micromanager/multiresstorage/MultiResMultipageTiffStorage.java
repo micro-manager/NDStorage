@@ -198,7 +198,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
            int overlapX, int overlapY, int width, int height, int byteDepth, boolean tiled,
-                                       Integer externalMaxResLevel) {
+                                       Integer externalMaxResLevel, boolean rgb) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -209,6 +209,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
       tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
       tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       prefix_ = name;
+      rgb_ = rgb;
 
       loaded_ = false;
       writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
@@ -555,7 +556,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
                   tileYPix += tileHeight_;
                }
                try {
-                  int multiplier = rgb_ ? 4 : 1;
+                  int multiplier = rgb_ ? 3 : 1;
                   if (dsIndex == 0) {
                      //account for overlaps when viewing full resolution tiles
                      tileYPix += yOverlap_ / 2;

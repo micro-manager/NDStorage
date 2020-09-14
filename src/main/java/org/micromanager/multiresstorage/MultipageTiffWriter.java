@@ -26,10 +26,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.CharBuffer;
+import java.nio.*;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
@@ -608,6 +605,11 @@ public class MultipageTiffWriter {
          if (rgb_) {
 //         if (byteDepth_ == 1) {
             //Original pix in RGBA format, convert to rgb for storage
+//            FloatBuffer fb = FloatBuffer.wrap((float[]) pixels);
+//            ByteBuffer byteBuffer = ByteBuffer.allocate(fb.capacity() * 4);
+//            byteBuffer.asFloatBuffer().put(fb);
+//            byte[] originalPix = byteBuffer.array();
+
             byte[] originalPix = (byte[]) pixels;
             byte[] rgbPix = new byte[originalPix.length * 3 / 4];
             int numPix = originalPix.length / 4;
