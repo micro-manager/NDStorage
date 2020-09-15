@@ -109,7 +109,7 @@ public class MultipageTiffWriter {
            int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
       displayStorer_ = false;
       masterMPTiffStorage_ = mpTiffStorage;
-      reader_ = new MultipageTiffReader(summaryMD, byteDepth);
+      reader_ = new MultipageTiffReader(summaryMD, byteDepth, rgb);
       File f = new File(directory + "/" + filename);
       filename_ = directory + "/" + filename;
 
@@ -603,20 +603,14 @@ public class MultipageTiffWriter {
    private ByteBuffer getPixelBuffer(Object pixels) throws IOException {
       try {
          if (rgb_) {
-//         if (byteDepth_ == 1) {
-            //Original pix in RGBA format, convert to rgb for storage
-//            FloatBuffer fb = FloatBuffer.wrap((float[]) pixels);
-//            ByteBuffer byteBuffer = ByteBuffer.allocate(fb.capacity() * 4);
-//            byteBuffer.asFloatBuffer().put(fb);
-//            byte[] originalPix = byteBuffer.array();
 
             byte[] originalPix = (byte[]) pixels;
             byte[] rgbPix = new byte[originalPix.length * 3 / 4];
             int numPix = originalPix.length / 4;
             for (int tripletIndex = 0; tripletIndex < numPix; tripletIndex++) {
-               rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4];
-               rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 1];
-               rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 + 2];
+               rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4 + 1];
+               rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 2];
+               rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 + 3];
             }
             return ByteBuffer.wrap(rgbPix);
 //         } 

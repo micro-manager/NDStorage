@@ -556,7 +556,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
                   tileYPix += tileHeight_;
                }
                try {
-                  int multiplier = rgb_ ? 3 : 1;
+                  int multiplier = rgb_ ? 4 : 1;
                   if (dsIndex == 0) {
                      //account for overlaps when viewing full resolution tiles
                      tileYPix += yOverlap_ / 2;
@@ -645,7 +645,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
 
             }
             int rgbMultiplier_ = rgb_ ? 4 : 1;
-            for (int compIndex = 0; compIndex < (rgb_ ? 3 : 1); compIndex++) {
+            for (int compIndex = 1; compIndex < (rgb_ ? 4 : 1); compIndex++) {
                int count = 1; //count is number of pixels (out of 4) used to create a pixel at this level
                //always take top left pixel, maybe take others depending on whether at image edge
                int sum = 0;
@@ -816,7 +816,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
 //         smd.put("Width", tileWidth_);
 //         smd.put("Height", tileHeight_);
          ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, writingExecutor_, this,
-                 tileWidth_, tileHeight_, false, byteDepth_);
+                 tileWidth_, tileHeight_, rgb_, byteDepth_);
          lowResStorages_.put(resIndex, storage);
       } catch (Exception ex) {
          throw new RuntimeException("Couldnt create downsampled storage");
