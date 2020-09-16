@@ -68,10 +68,11 @@ public class MultipageTiffReader {
    /**
     * This constructor is used for a file that is currently being written
     */
-   public MultipageTiffReader(JSONObject summaryMD, int byteDepth) {
+   public MultipageTiffReader(JSONObject summaryMD, int byteDepth, boolean rgb) {
       summaryMetadata_ = summaryMD;
       byteOrder_ = MultipageTiffWriter.BYTE_ORDER;
       byteDepth_ = byteDepth;
+      rgb_ = rgb;
    }
    
    public void setIndexMap(ConcurrentHashMap<String,Long> indexMap) {
@@ -370,7 +371,6 @@ public class MultipageTiffReader {
       } catch (JSONException ex) {
          throw new RuntimeException("Error reading image metadata from file");
       }
-      
 //      if ( byteDepth_ == 0) {
 //         getRGBAndByteDepth(md);
 //      }
@@ -380,16 +380,15 @@ public class MultipageTiffReader {
             byte[] pixels = new byte[(int) (4 * data.bytesPerImage / 3)];
             int i = 0;
             for (byte b : pixelBuffer.array()) {
-               pixels[i] = b;
-               i++;
-               if ((i + 1) % 4 == 0) {
-                  pixels[i] = 0;
+               if (i % 4 == 0) {
                   i++;
                }
+               pixels[i] = b;
+               i++;
             }
             return new TaggedImage(pixels, md);
          } else {
-             short[] pixels = new short[(int) (2 * (data.bytesPerImage/3))];
+            short[] pixels = new short[(int) (2 * (data.bytesPerImage/3))];
             int i = 0;           
             while ( i < pixels.length) {                
                pixels[i] = pixelBuffer.getShort( 2*((i/4)*3 + (i%4)) );        
