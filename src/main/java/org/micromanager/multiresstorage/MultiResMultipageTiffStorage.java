@@ -645,41 +645,51 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
 
             }
             int rgbMultiplier_ = rgb_ ? 4 : 1;
-            for (int compIndex = 1; compIndex < (rgb_ ? 4 : 1); compIndex++) {
+            for (int compIndex = 1; compIndex < (rgb_ ? 4 : 2); compIndex++) {
                int count = 1; //count is number of pixels (out of 4) used to create a pixel at this level
                //always take top left pixel, maybe take others depending on whether at image edge
                int sum = 0;
-               if (byteDepth_ == 1 || rgb_) {
+               if (rgb_) {
                   sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff;
+               } else if (byteDepth_ == 1) {
+                  sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)] & 0xff;
                } else {
-                  sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xffff;
+                  sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)] & 0xffff;
                }
 
                //pixel index can be different from index in tile at resolution level 0 if there is nonzero overlap
                if (x < previousLevelWidth - 1 && y < previousLevelHeight - 1) { //if not bottom right corner, add three more pix
                   count += 3;
-                  if (byteDepth_ == 1 || rgb_) {
+                  if (rgb_) {
                      sum += (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff)
                              + (((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff)
                              + (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff);
+                  } else if (byteDepth_ == 1) {
+                     sum += (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1)  ] & 0xff)
+                             + (((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xff)
+                             + (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX)  ] & 0xff);
                   } else {
-                     sum += (((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xffff)
-                             + (((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xffff)
-                             + (((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xffff);
+                     sum += (((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1)  ] & 0xffff)
+                             + (((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xffff)
+                             + (((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX)  ] & 0xffff);
                   }
                } else if (x < previousLevelWidth - 1) { //if not right edge, add one more pix
                   count++;
-                  if (byteDepth_ == 1 || rgb_) {
+                  if (rgb_) {
                      sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff;
+                  } else if (byteDepth_ == 1 ) {
+                     sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xff;
                   } else {
-                     sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xffff;
+                     sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xffff;
                   }
                } else if (y < previousLevelHeight - 1) { // if not bottom edge, add one more pix
                   count++;
-                  if (byteDepth_ == 1 || rgb_) {
+                  if (rgb_) {
                      sum += ((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff;
+                  } else if (byteDepth_ == 1 ) {
+                     sum += ((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) ] & 0xff;
                   } else {
-                     sum += ((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xffff;
+                     sum += ((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) ] & 0xffff;
                   }
                } else {
                   //it is the bottom right corner, no more pix to add
@@ -688,13 +698,15 @@ public class MultiResMultipageTiffStorage implements StorageAPI {
                //if full res tile has an odd number of pix, the last one gets chopped off
                //to make it fit into tile containers
                try {
-                  int index = (((y + yPos * tileHeight_) / 2) * tileWidth_ + (x + xPos * tileWidth_) / 2) * rgbMultiplier_ + compIndex;
+                  int index = (((y + yPos * tileHeight_) / 2) * tileWidth_ + (x + xPos * tileWidth_) / 2)
+                          * (rgb_ ? rgbMultiplier_ + compIndex : 1);
                   if (byteDepth_ == 1 || rgb_) {
                      ((byte[]) currentLevelPix)[index] = (byte) Math.round(sum / count);
                   } else {
                      ((short[]) currentLevelPix)[index] = (short) Math.round(sum / count);
                   }
                } catch (Exception e) {
+                  e.printStackTrace();
                   throw new RuntimeException("Couldn't copy pixels to lower resolution");
                }
 
