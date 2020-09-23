@@ -44,6 +44,8 @@ import javax.swing.*;
 
 public class MultipageTiffWriter {
 
+   private static final int MAJOR_VERSION = 1;
+
 //   private static final long BYTES_PER_MEG = 1048576;
 //   private static final long MAX_FILE_SIZE = 15*BYTES_PER_MEG;
    private static final long BYTES_PER_GIG = 1073741824;
@@ -309,7 +311,11 @@ public class MultipageTiffWriter {
       headerBuffer.putInt(12, headerBuffer.capacity() + mdLength);
 
       //8 bytes for display settings offset header and display settings offset--written later
-      //8 bytes for comments offset header and comments offset--written later
+
+      //8 bytes for unique identifier and major version
+      headerBuffer.putInt(24, 483729);
+      headerBuffer.putInt(28, MAJOR_VERSION); //major version
+
       //8 bytes for summaryMD header  summary md length + 
       headerBuffer.putInt(32, SUMMARY_MD_HEADER);
       headerBuffer.putInt(36, mdLength);
