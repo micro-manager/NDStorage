@@ -165,7 +165,7 @@ public interface StorageAPI {
    public TaggedImage getImage(HashMap<String, Integer> axes);
 
    /**
-    * Get a set containing all image axes in this dataset (used for loaded data)
+    * Get a set containing all image axes in this dataset
     * @return 
     */
    public Set<HashMap<String, Integer>> getAxesSet();

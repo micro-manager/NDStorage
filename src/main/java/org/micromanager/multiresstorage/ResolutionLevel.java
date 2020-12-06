@@ -33,7 +33,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
+
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
@@ -80,7 +81,12 @@ public final class ResolutionLevel {
       setSummaryMetadata(summaryMetadata);
 
       if (!newDataSet_) {
-         openExistingDataSet();
+         try {
+            openExistingDataSet();
+         } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "Can't open dataset. Have you selected the top" +
+                    " level folder of an NDTiffStorage dataset?");
+         }
       } else {
          imageWidth_ = imageWidth;
          imageHeight_ = imageHeight;
@@ -115,6 +121,9 @@ public final class ResolutionLevel {
       //Need to throw error if file not found
       MultipageTiffReader reader = null;
       File dir = new File(directory_);
+      if (dir.listFiles() == null) {
+         throw new RuntimeException("No files found");
+      }
       int numFiles = dir.listFiles().length;
 
       ProgressBar progressBar = null;

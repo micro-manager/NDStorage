@@ -17,7 +17,7 @@ import mmcorej.org.json.JSONObject;
 class StorageMD {
 
    private static final String SUPER_CHANNEL_NAME = "StorageSuperChannelName";
-   private static final String AXES = "ImagrStorageAxesPositions";
+   private static final String AXES = "ImageStorageAxesPositions";
    private static final String GRID_COL = "GridColumnIndex";
    private static final String GRID_ROW = "GridRowIndex";
    private static final String OVERLAP_X = "GridPixelOverlapX";
