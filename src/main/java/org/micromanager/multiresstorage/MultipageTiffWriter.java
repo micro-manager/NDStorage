@@ -356,9 +356,11 @@ public class MultipageTiffWriter {
     * map entries for backwards reading capability A file that has been finished
     * should have everything it needs to be properly reopened in MM or by a
     * basic TIFF reader
+    *
+    * Returns a Future for when writing is done
     */
-   public void finishedWriting() throws IOException, ExecutionException, InterruptedException {
-      writeNullOffsetAfterLastImage();
+   public Future finishedWriting() throws IOException, ExecutionException, InterruptedException {
+      Future f = writeNullOffsetAfterLastImage();
       //go back to the index map header and change the number of entries from the max
       //value allotted early to the actual number written
       //The MultipageTiffReader no longer needs this because it interperets 0's as the 
@@ -368,13 +370,13 @@ public class MultipageTiffWriter {
       ByteBuffer indexMapNumEntries = (ByteBuffer) allocateByteBuffer(4);
       indexMapNumEntries.putInt(0, numImages);
       Future finished = fileChannelWrite(indexMapNumEntries, indexMapFirstEntry_ - 4);
-      finished.get();
       try {
          //extra byte of space, just to make sure nothing gets cut off
          raFile_.setLength(filePosition_ + 8);
       } catch (IOException ex) {
          throw new RuntimeException(ex);
       }
+      return finished;
    }
 
    /**
@@ -383,7 +385,7 @@ public class MultipageTiffWriter {
     */
    public Future close() throws IOException, InterruptedException, ExecutionException {
       if (displayStorer_) {
-         writeDisplaySettings(masterMPTiffStorage_.getDisplaySettings());
+         Future f = writeDisplaySettings(masterMPTiffStorage_.getDisplaySettings());
       }
 
       Future f = executeWritingTask(new Runnable() {
@@ -703,14 +705,14 @@ public class MultipageTiffWriter {
       }
    }
 
-   private void writeNullOffsetAfterLastImage() throws IOException, InterruptedException, ExecutionException {
+   private Future writeNullOffsetAfterLastImage() throws IOException, InterruptedException, ExecutionException {
       ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(4);
       buffer.putInt(0, 0);
       Future finished = fileChannelWrite(buffer, nextIFDOffsetLocation_);
-      finished.get();
+      return finished;
    }
 
-   private void writeDisplaySettings(JSONObject displaySettings) throws IOException, InterruptedException, ExecutionException {
+   private Future writeDisplaySettings(JSONObject displaySettings) throws IOException, InterruptedException, ExecutionException {
       ByteBuffer header = (ByteBuffer) allocateByteBuffer(8);
       ByteBuffer buffer = ByteBuffer.wrap(getBytesFromString(displaySettings.toString()));
       int numReservedBytes = buffer.capacity();
@@ -724,7 +726,7 @@ public class MultipageTiffWriter {
       offsetHeader.putInt(4, (int) filePosition_);
       Future done = fileChannelWrite(offsetHeader, 16);
       filePosition_ += numReservedBytes + 8;
-      done.get();
+      return done;
    }
 
    void setDisplayStorer() {
