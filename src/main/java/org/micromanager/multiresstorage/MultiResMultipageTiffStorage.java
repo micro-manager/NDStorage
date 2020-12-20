@@ -46,7 +46,7 @@ import javax.swing.*;
  * downsample factor without truncation
  *
  */
-public class MultiResMultipageTiffStorage implements StorageAPI {
+public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorageAPI {
 
    public static final String TIME_AXIS = "time";
    public static final String CHANNEL_AXIS = "channel";
