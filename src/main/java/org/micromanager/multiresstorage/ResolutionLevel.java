@@ -545,7 +545,7 @@ public final class ResolutionLevel {
          }
 
          //only need to finish last one here because previous ones in set are finished as they fill up with images
-         tiffWriters_.getLast().finishedWriting();
+         Future f = tiffWriters_.getLast().finishedWriting();
          //close all
          for (MultipageTiffWriter w : tiffWriters_) {
             w.close();

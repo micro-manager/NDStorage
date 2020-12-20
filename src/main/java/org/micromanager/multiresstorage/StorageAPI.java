@@ -14,46 +14,32 @@ import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONObject;
 
 /**
+ * Minimal Data storage API. The interface does not include any of the methods for multi-resolution
+ * data, which are in the MultiresStorageAPI interface
  *
  * @author henrypinkard
  */
 public interface StorageAPI {
-   
-    /**
-     * Get a set of the (row, col) indices at which data has been acquired at this 
-     * @param zIndex
-     * @return 
-     */
-   public Set<Point> getTileIndicesWithDataAt(int zIndex);
 
    /**
-    * Add an image into storage, not making use of multi-resolution/stitched image
-    * features
-    * 
+    * Add an image into storage
+    *
     * @param taggedImg
     * @param axes
     */
    public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes);
-   
-   /**
-    * Add an image into storage, which corresponds to a particular row/column in 
-    * a larger stitched image 
-    * 
-    * @param taggedImg
-    * @param axes
-    * @param row
-    * @param col 
-    */
-   public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, int row, int col);
 
    /**
-    * Is this dataset finished writing and now read only
+    * Is this dataset finished writing and now read only?
+    *
     * @return 
     */
    public boolean isFinished();
 
    /**
-    * Set display settings for storage. No particular structure required
+    * Set display settings for storage. No particular structure required as the
+    * storage class will only save and load them but not do anything with them.
+    *
     * @param displaySettings 
     */
    public void setDisplaySettings(JSONObject displaySettings);
@@ -68,7 +54,8 @@ public interface StorageAPI {
 
    /**
     * 
-    * @return the summary metadata for this dataset
+    * @return the summary metadata for this dataset. When creating new storage instances, this will
+    * have been supplied in the constructor.
     */
    public JSONObject getSummaryMetadata();
 
@@ -78,7 +65,7 @@ public interface StorageAPI {
    public void finishedWriting();
 
    /**
-    * Get the path to the top level folder where this dataset is
+    * Get the path to the top level folder where this dataset is or null if its not saved to disk
     * @return 
     */
    public String getDiskLocation();
@@ -89,72 +76,11 @@ public interface StorageAPI {
    public void close();
 
    /**
-    * [x_min, y_min, x_max, y_max] bounds where data has been acquired (can be negative)
+    * [x_min, y_min, x_max, y_max] pixel bounds where data has been acquired (can be negative).
+    * In the simplest case this will be [0, 0, width, height]
     * @return 
     */
    public int[] getImageBounds();
-
-   /**
-    * return number of resolutions if this is a multiresolution pyramid
-    * @return 
-    */
-   public int getNumResLevels();
-
-   /**
-    * Get a single tile of a multiresolution stitched dataset
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @param row row index of tile in the requested resolution
-    * @param col column index of tile in the requested resolution
-    * @return
-    */
-   public TaggedImage getTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
-
-   /**
-    * Check for a  tile of a multiresolution stitched dataset
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @param row row index of tile in the requested resolution
-    * @param col column index of tile in the requested resolution
-    * @return
-    */
-   public boolean hasTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
-
-   /**
-    * Get a single stitched image that spans multiple tiles
-    * 
-    * @param axes HashMap mapping axis names to positions
-    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @param xOffset leftmost pixel in the requested resolution level
-    * @param yOffset topmost pixel in the requested resolution level
-    * @param imageWidth width of the returned image
-    * @param imageHeight height of the returned image
-    * @return 
-    */
-   public TaggedImage getStitchedImage(HashMap<String, Integer> axes,
-           int resIndex,
-           int xOffset, int yOffset,
-           int imageWidth, int imageHeight);
-
-   /**
-    * Check if dataset has an image with the specified axes
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @return
-    */
-   public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
-
-   /**
-    * Get a single image from full resolution data
-    *
-    * @param axes
-    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @return
-    */
-   public TaggedImage getImage(HashMap<String, Integer> axes, int resolutionIndex);
 
    /**
     * Get a single image from full resolution data
@@ -166,8 +92,19 @@ public interface StorageAPI {
 
    /**
     * Get a set containing all image axes in this dataset
+    *
     * @return 
     */
    public Set<HashMap<String, Integer>> getAxesSet();
+
+   /**
+    * Return a unqiue name associated with this data storage instance. For instances
+    * on disk, this will be the name supplied to the storage in a constructer, plus
+    * some suffix (i.e. "_1", "_2", etc.) to differentiate the corrsponding files
+    * on disk if multiple instances are created with the same name argument.
+    * @return
+    */
+   public String getUniqueAcqName();
+
 
 }
