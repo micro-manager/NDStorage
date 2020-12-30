@@ -699,7 +699,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                //to make it fit into tile containers
                try {
                   int index = (((y + yPos * tileHeight_) / 2) * tileWidth_ + (x + xPos * tileWidth_) / 2)
-                          * (rgb_ ? rgbMultiplier_ + compIndex : 1);
+                          * (rgb_ ? rgbMultiplier_ : 1) + compIndex;
                   if (byteDepth_ == 1 || rgb_) {
                      ((byte[]) currentLevelPix)[index] = (byte) Math.round(sum / count);
                   } else {
