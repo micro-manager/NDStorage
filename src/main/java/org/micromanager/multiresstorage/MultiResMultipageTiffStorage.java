@@ -19,15 +19,10 @@ package org.micromanager.multiresstorage;
 import java.awt.Point;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -58,7 +53,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private ResolutionLevel fullResStorage_;
    private TreeMap<Integer, ResolutionLevel> lowResStorages_; //map of resolution index to storage instance
    private String directory_;
-   private JSONObject summaryMD_, displaySettings_;
+   private final JSONObject summaryMD_;
+   private JSONObject displaySettings_;
    private int xOverlap_, yOverlap_;
    private int fullResTileWidthIncludingOverlap_, fullResTileHeightIncludingOverlap_;
    private int tileWidth_, tileHeight_; //Indpendent of zoom level because tile sizes stay the same--which means overlap is cut off
@@ -72,10 +68,20 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private boolean loaded_, tiled_;
    private ConcurrentHashMap<String, Integer> superChannelNames_ = new ConcurrentHashMap<String, Integer>();
    private CopyOnWriteArrayList<String> positions_ = new CopyOnWriteArrayList<String>();
-   private Set<HashMap<String, Integer>> imageAxes_ = new HashSet<HashMap<String, Integer>>();
+   //this is how to create a concurrent set
+   private Set<HashMap<String, Integer>> imageAxes_ = new ConcurrentHashMap<HashMap<String, Integer>, Boolean>().newKeySet();
    private final Integer externalMaxResLevel_;
-
    private String prefix_;
+   private AxesMetaDataWriter axesMetadataWriter_;
+
+   private static final int BUFFER_DIRECT_THRESHOLD = 1024;
+   private static final int BUFFER_RECYCLE_SIZE_MIN = 16;
+   private static final int BUFFER_POOL_SIZE =
+           System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
+   private final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
+
+
+   private volatile boolean discardData_ = false;
 
    /**
     * Constructor to load existing storage from disk dir --top level saving
@@ -86,9 +92,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       loaded_ = true;
       directory_ = dir;
       finished_ = true;
+      pooledBuffers_ = null;
       String fullResDir = dir + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
       //create fullResStorage
-      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, null, this, -1, -1, false, -1);
+      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, -1, -1, false, -1);
       summaryMD_ = fullResStorage_.getSummaryMetadata();
       try {
          tiled_ = StorageMD.getTiledStorage(summaryMD_);
@@ -155,7 +162,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             break;
          }
          maxResolutionLevel_ = resIndex;
-         lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false, null, null, this, -1, -1, false, -1));
+         lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false, null, this, -1, -1, false, -1));
          resIndex++;
       }
 
@@ -194,7 +201,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    }
 
    /**
-    * Construcotr for new storage that doesn't parse summary metadata
+    * Constructor for new storage that doesn't parse summary metadata
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
            int overlapX, int overlapY, int width, int height, int byteDepth, boolean tiled,
@@ -210,6 +217,12 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       prefix_ = name;
       rgb_ = rgb;
+
+      if (BUFFER_POOL_SIZE > 0) {
+         pooledBuffers_ = new ConcurrentHashMap<Integer, Deque<ByteBuffer>>();
+      } else {
+         pooledBuffers_ = null;
+      }
 
       loaded_ = false;
       writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
@@ -228,39 +241,52 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          throw new RuntimeException("Couldnt copy summary metadata");
       }
 
-      //prefix is provided by summary metadata
-      try {
-         uniqueAcqName_ = getUniqueAcqDirName(dir, name);
-         //create acqusition directory for actual data
-         directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
-      } catch (Exception e) {
-         throw new RuntimeException("Couldn't make acquisition directory");
-      }
+      writingExecutor_.submit(new Runnable() {
+         @Override
+         public void run() {
 
-      //create directory for full res data
-      String fullResDir = directory_ + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
-      try {
-         createDir(fullResDir);
-      } catch (Exception ex) {
-         throw new RuntimeException("couldn't create saving directory");
-      }
+            //prefix is provided by summary metadata
+            try {
+               uniqueAcqName_ = getUniqueAcqDirName(dir, name);
+               //create acqusition directory for actual data
+               directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
+            } catch (Exception e) {
+               throw new RuntimeException("Couldn't make acquisition directory");
+            }
+//            try {
+//               axesMetadataWriter_ = new AxesMetaDataWriter(directory_ +
+//                       (dir.endsWith(File.separator) ? "" : File.separator) , writingExecutor_);
+//            } catch (IOException e) {
+//               e.printStackTrace();
+//            }
 
-      if (tiled_) {
-         try {
-            posManager_ = new PositionManager();
-         } catch (Exception e) {
-            throw new RuntimeException("Couldn't create position manaher");
+
+            //create directory for full res data
+            String fullResDir = directory_ + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
+            try {
+               createDir(fullResDir);
+            } catch (Exception ex) {
+               throw new RuntimeException("couldn't create saving directory");
+            }
+
+            if (tiled_) {
+               try {
+                  posManager_ = new PositionManager();
+               } catch (Exception e) {
+                  throw new RuntimeException("Couldn't create position manaher");
+               }
+            }
+            try {
+               //Create full Res storage
+               fullResStorage_ = new ResolutionLevel(fullResDir, true, summaryMetadata,
+                       MultiResMultipageTiffStorage.this, fullResTileWidthIncludingOverlap_, fullResTileHeightIncludingOverlap_,
+                       rgb_, byteDepth_);
+            } catch (IOException ex) {
+               throw new RuntimeException("couldn't create Full res storage");
+            }
+            lowResStorages_ = new TreeMap<Integer, ResolutionLevel>();
          }
-      }
-      try {
-         //Create full Res storage
-         fullResStorage_ = new ResolutionLevel(fullResDir, true, summaryMetadata, writingExecutor_, this,
-                 fullResTileWidthIncludingOverlap_, fullResTileHeightIncludingOverlap_,
-                 rgb_, byteDepth_);
-      } catch (IOException ex) {
-         throw new RuntimeException("couldn't create Full res storage");
-      }
-      lowResStorages_ = new TreeMap<Integer, ResolutionLevel>();
+      });
    }
 
    static File createDir(String dir) {
@@ -610,7 +636,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          posManager_.updateLowerResolutionNodes(maxResolutionLevel_);
          ArrayList<Future> finished = new ArrayList<Future>();
          for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
-            populateNewResolutionLevel(finished, i);
+            populateNewResolutionLevel(i);
             for (Future f : finished) {
                f.get();
             }
@@ -645,7 +671,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
             }
             int rgbMultiplier_ = rgb_ ? 4 : 1;
-            for (int compIndex = 1; compIndex < (rgb_ ? 4 : 2); compIndex++) {
+            for (int compIndex = 0; compIndex < (rgb_ ? 4 : 1); compIndex++) {
                int count = 1; //count is number of pixels (out of 4) used to create a pixel at this level
                //always take top left pixel, maybe take others depending on whether at image edge
                int sum = 0;
@@ -715,7 +741,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
    }
 
-   private void populateNewResolutionLevel(List<Future> writeFinishedList, int resolutionIndex) {
+   private void populateNewResolutionLevel(int resolutionIndex) {
       createDownsampledStorage(resolutionIndex);
       //add all tiles from existing resolution levels to this new one            
       ResolutionLevel previousLevelStorage
@@ -734,84 +760,84 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
          int rowIndex = (int) posManager_.getGridRow(fullResPosIndex, resolutionIndex);
          int colIndex = (int) posManager_.getGridCol(fullResPosIndex, resolutionIndex);
-         writeFinishedList.addAll(addToLowResStorage(ti,
+         addToLowResStorage(ti,
                  tIndex, zIndex, channelIndex, resolutionIndex - 1, fullResPosIndex,
-                 rowIndex, colIndex));
+                 rowIndex, colIndex);
       }
    }
 
    /**
     * return a future for when the current res level is done writing
     */
-   private List<Future> addToLowResStorage(TaggedImage img, int tIndex, int zIndex,
+   private Future addToLowResStorage(TaggedImage img, int tIndex, int zIndex,
            int channelIndex, int previousResIndex, int fullResPositionIndex, int rowIndex, int colIndex) {
-      List<Future> writeFinishedList = new ArrayList<>();
-      //Read indices
+      return writingExecutor_.submit(new Runnable() {
+         @Override
+         public void run() {
+            //Read indices
+            Object previousLevelPix = img.pix;
+            int resolutionIndex = previousResIndex + 1;
 
-      Object previousLevelPix = img.pix;
-      int resolutionIndex = previousResIndex + 1;
+            while (resolutionIndex <= maxResolutionLevel_) {
+               //Create this storage level if needed and add all existing tiles form the previous one
+               if (!lowResStorages_.containsKey(resolutionIndex)) {
+                  //re add all tiles from previous res level
+                  populateNewResolutionLevel(resolutionIndex);
+               }
 
-      while (resolutionIndex <= maxResolutionLevel_) {
-         //Create this storage level if needed and add all existing tiles form the previous one
-         if (!lowResStorages_.containsKey(resolutionIndex)) {
-            //re add all tiles from previous res level
-            populateNewResolutionLevel(writeFinishedList, resolutionIndex);
-            //its been re added, so can return here and previous call will get to the code below
-            return writeFinishedList;
-         }
+               //Create pixels or get appropriate pixels to add to
+               TaggedImage existingImage = lowResStorages_.get(resolutionIndex).getImage(channelIndex, zIndex, tIndex,
+                       posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex));
 
-         //Create pixels or get appropriate pixels to add to
-         TaggedImage existingImage = lowResStorages_.get(resolutionIndex).getImage(channelIndex, zIndex, tIndex,
-                 posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex));
+               Object currentLevelPix;
+               if (existingImage == null) {
+                  if (rgb_) {
+                     currentLevelPix = new byte[tileWidth_ * tileHeight_ * 4];
+                  } else if (byteDepth_ == 1) {
+                     currentLevelPix = new byte[tileWidth_ * tileHeight_];
+                  } else {
+                     currentLevelPix = new short[tileWidth_ * tileHeight_];
+                  }
+               } else {
+                  currentLevelPix = existingImage.pix;
+               }
 
-         Object currentLevelPix;
-         if (existingImage == null) {
-            if (rgb_) {
-               currentLevelPix = new byte[tileWidth_ * tileHeight_ * 4];
-            } else if (byteDepth_ == 1) {
-               currentLevelPix = new byte[tileWidth_ * tileHeight_];
-            } else {
-               currentLevelPix = new short[tileWidth_ * tileHeight_];
-            }
-         } else {
-            currentLevelPix = existingImage.pix;
-         }
+               downsample(currentLevelPix, previousLevelPix, fullResPositionIndex, resolutionIndex);
 
-         downsample(currentLevelPix, previousLevelPix, fullResPositionIndex, resolutionIndex);
+               //store this tile in the storage class correspondign to this resolution
+               try {
+                  if (existingImage == null) {     //Image doesn't yet exist at this level, so add it
 
-         //store this tile in the storage class correspondign to this resolution
-         try {
-            if (existingImage == null) {     //Image doesn't yet exist at this level, so add it
-
-               //create a copy of tags so tags from a different res level arent inadverntanly modified
-               // while waiting for being written to disk
-               JSONObject tags = new JSONObject(img.tags.toString());
-               //modify tags to reflect image size, and correct position index
+                     //create a copy of tags so tags from a different res level arent inadverntanly modified
+                     // while waiting for being written to disk
+                     JSONObject tags = new JSONObject(img.tags.toString());
+                     //modify tags to reflect image size, and correct position index
 //               MultiresMetadata.setWidth(tags, tileWidth_);
 //               MultiresMetadata.setHeight(tags, tileHeight_);
 
-               int positionIndex = posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex);
-               Future f = lowResStorages_.get(resolutionIndex).putImage(new TaggedImage(currentLevelPix, tags),
-                       prefix_, tIndex, channelIndex, zIndex, positionIndex);
+                     int positionIndex = posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex);
+                     lowResStorages_.get(resolutionIndex).putImage(new TaggedImage(currentLevelPix, tags),
+                             prefix_, tIndex, channelIndex, zIndex, positionIndex);
 
-               //need to make sure this one gets written before others can be overwritten
+                     //need to make sure this one gets written before others can be overwritten
 //               f.get();
-            } else {
-               //Image already exists, only overwrite pixels to include new tiles
-               writeFinishedList.addAll(lowResStorages_.get(resolutionIndex).overwritePixels(currentLevelPix,
-                       channelIndex, zIndex, tIndex, posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex)));
+                  } else {
+                     //Image already exists, only overwrite pixels to include new tiles
+                     lowResStorages_.get(resolutionIndex).overwritePixels(currentLevelPix,
+                             channelIndex, zIndex, tIndex, posManager_.getLowResPositionIndex(fullResPositionIndex, resolutionIndex));
+                  }
+
+               } catch (Exception e) {
+                  e.printStackTrace();
+                  throw new RuntimeException("Couldnt modify tags for lower resolution level");
+               }
+
+               //go on to next level of downsampling
+               previousLevelPix = currentLevelPix;
+               resolutionIndex++;
             }
-
-         } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("Couldnt modify tags for lower resolution level");
          }
-
-         //go on to next level of downsampling
-         previousLevelPix = currentLevelPix;
-         resolutionIndex++;
-      }
-      return writeFinishedList;
+      });
    }
 
    private void createDownsampledStorage(int resIndex) {
@@ -827,7 +853,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 //         //reset dimensions so that overlap not included
 //         smd.put("Width", tileWidth_);
 //         smd.put("Height", tileHeight_);
-         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, writingExecutor_, this,
+         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, this,
                  tileWidth_, tileHeight_, rgb_, byteDepth_);
          lowResStorages_.put(resIndex, storage);
       } catch (Exception ex) {
@@ -884,114 +910,114 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
    }
 
+   public void discardDataForDebugging() {
+      discardData_ = true;
+   }
+
    /**
     * This version works for regular, non-multiresolution data
     *
     * @param ti
-    * @param axes
+    * @param axessss
     */
-   public void putImage(TaggedImage ti, HashMap<String, Integer> axes) {
-      try {
-         //Make a local copy
-         axes = new HashMap<String, Integer>(axes);
-         List<Future> writeFinishedList = new ArrayList<Future>();
-         imageAxes_.add(axes);
+   public void putImage(TaggedImage ti, HashMap<String, Integer> axessss) {
+      writingExecutor_.submit(new Runnable() {
+         @Override
+         public void run() {
 
-         int pIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
-         int tIndex = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
-         int zIndex = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
-         //This call merges all other axes besides p z t into a superchannel,
-         //Creating a new one if neccessary
-         String superChannelName = getSuperChannelName(axes, true);
-         //set the name because it will be needed in recovery
+            if (discardData_) {
+               return;
+            }
+            try {
+               //Make a local copy
+               HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
+               List<Future> writeFinishedList = new ArrayList<Future>();
+               imageAxes_.add(axes);
 
-         StorageMD.setSuperChannelName(ti.tags, superChannelName);
-         //make sure to put it in the metadata
-         StorageMD.createAxes(ti.tags);
-         for (String axis : axes.keySet()) {
-            StorageMD.setAxisPosition(ti.tags, axis, axes.get(axis));
+               int pIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
+               int tIndex = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
+               int zIndex = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
+               //This call merges all other axes besides p z t into a superchannel,
+               //Creating a new one if neccessary
+               String superChannelName = getSuperChannelName(axes, true);
+               //set the name because it will be needed in recovery
+
+               StorageMD.setSuperChannelName(ti.tags, superChannelName);
+               //make sure to put it in the metadata
+               StorageMD.createAxes(ti.tags);
+               for (String axis : axes.keySet()) {
+                  StorageMD.setAxisPosition(ti.tags, axis, axes.get(axis));
+               }
+
+               //write to full res storage as normal (i.e. with overlap pixels present)
+               fullResStorage_.putImage(ti, prefix_,
+                       tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex);
+
+            } catch (IOException ex) {
+               throw new RuntimeException(ex.toString());
+            }
          }
-
-         //write to full res storage as normal (i.e. with overlap pixels present)
-         writeFinishedList.add(fullResStorage_.putImage(ti, prefix_,
-                 tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex));
-
-//         //check if maximum resolution level needs to be updated based on full size of image
-//         long fullResPixelWidth = getNumCols() * tileWidth_;
-//         long fullResPixelHeight = getNumRows() * tileHeight_;
-//         int maxResIndex = (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
-//                 / 4)) / Math.log(2));
-//
-//         addResolutionsUpTo(maxResIndex);
-//         writeFinishedList.addAll(addToLowResStorage(ti, tIndex, zIndex,
-//                 superCIndex, 0, pIndex, row, col));
-
-//         for (Future f : writeFinishedList) {
-//            f.get();
-//         }
-      } catch (IOException ex) {
-         throw new RuntimeException(ex.toString());
-      }
+      });
    }
 
    /**
     * This version is called by programs doing dynamic stitching (i.e.
     * micro-magellan). axes must contain "position" mapping to a desired position index
     *
+    * @return
     */
-   public void putImage(TaggedImage ti, HashMap<String, Integer> axes, int row, int col) {
-      try {
+   public Future putImage(TaggedImage ti, HashMap<String, Integer> axes, int row, int col) {
+      return writingExecutor_.submit(new Runnable() {
+         @Override
+         public void run() {
+            try {
+               if (tiled_) {
+                  if (!axes.containsKey(POSITION_AXIS)) {
+                     throw new RuntimeException("axes must contain a position index entry with \"position\" as key");
+                  }
+               }
+               int pIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
 
-         List<Future> writeFinishedList = new ArrayList<Future>();
+               imageAxes_.add(axes);
 
-         if (tiled_) {
-            if (!axes.containsKey(POSITION_AXIS)) {
-               throw new RuntimeException("axes must contain a position index entry with \"position\" as key");
+               int tIndex = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
+               int zIndex = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
+               //This call merges all other axes besides p z t into a superchannel,
+               //Creating a new one if neccessary
+               String superChannelName = getSuperChannelName(axes, true);
+               //set the name because it will be needed in recovery
+
+               StorageMD.setSuperChannelName(ti.tags, superChannelName);
+               //make sure to put it in the metadata
+               StorageMD.createAxes(ti.tags);
+               for (String axis : axes.keySet()) {
+                  StorageMD.setAxisPosition(ti.tags, axis, axes.get(axis));
+               }
+
+               //write to full res storage as normal (i.e. with overlap pixels present)
+               fullResStorage_.putImage(ti, prefix_,
+                       tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex);
+
+               if (tiled_) {
+                  //check if maximum resolution level needs to be updated based on full size of image
+                  long fullResPixelWidth = getNumCols() * tileWidth_;
+                  long fullResPixelHeight = getNumRows() * tileHeight_;
+                  int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
+                          (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
+                                  / 4)) / Math.log(2));
+
+                  //Make sure positon manager knows about potential new rows/cols
+                  posManager_.rowColReceived(row, col);
+                  addResolutionsUpTo(maxResIndex);
+                  addToLowResStorage(ti, tIndex, zIndex,
+                          superChannelNames_.get(superChannelName), 0, pIndex, row, col);
+               }
+
+            } catch (IOException | ExecutionException | InterruptedException ex) {
+               throw new RuntimeException(ex.toString());
             }
          }
-         int pIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
-
-         imageAxes_.add(axes);
-
-         int tIndex = axes.containsKey(TIME_AXIS) ? axes.get(TIME_AXIS) : 0;
-         int zIndex = axes.containsKey(Z_AXIS) ? axes.get(Z_AXIS) : 0;
-         //This call merges all other axes besides p z t into a superchannel,
-         //Creating a new one if neccessary
-         String superChannelName = getSuperChannelName(axes, true);
-         //set the name because it will be needed in recovery
-
-         StorageMD.setSuperChannelName(ti.tags, superChannelName);
-         //make sure to put it in the metadata
-         StorageMD.createAxes(ti.tags);
-         for (String axis : axes.keySet()) {
-            StorageMD.setAxisPosition(ti.tags, axis, axes.get(axis));
-         }
-
-         //write to full res storage as normal (i.e. with overlap pixels present)
-         writeFinishedList.add(fullResStorage_.putImage(ti, prefix_,
-                 tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex));
-
-         if (tiled_) {
-            //check if maximum resolution level needs to be updated based on full size of image
-            long fullResPixelWidth = getNumCols() * tileWidth_;
-            long fullResPixelHeight = getNumRows() * tileHeight_;
-            int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
-                    (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
-                    / 4)) / Math.log(2));
-
-            //Make sure positon manager knows about potential new rows/cols
-            posManager_.rowColReceived(row, col);
-            addResolutionsUpTo(maxResIndex);
-            writeFinishedList.addAll(addToLowResStorage(ti, tIndex, zIndex,
-                    superChannelNames_.get(superChannelName), 0, pIndex, row, col));
-         }
-
-//         for (Future f : writeFinishedList) {
-//            f.get();
-//         }
-      } catch (IOException | ExecutionException | InterruptedException ex) {
-         throw new RuntimeException(ex.toString());
-      }
+      });
    }
 
    public boolean hasImage(HashMap<String, Integer> axes, int downsampleIndex) {
@@ -1020,7 +1046,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       return getImage(axes, 0);
    }
 
-                               @Override
+   @Override
    public TaggedImage getImage(HashMap<String, Integer> axes, int dsIndex) {
       //Convert axes to the 4 axes used by underlying storage by adding in
       //p z t as needed and converting c + remaining to superchannel
@@ -1038,28 +1064,35 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    }
 
    public void finishedWriting() {
-      if (finished_) {
-         return;
-      }
-      fullResStorage_.finished();
-      for (ResolutionLevel s : lowResStorages_.values()) {
-         if (s != null) {
-            //s shouldn't be null ever, this check is to prevent window from getting into unclosable state
-            //when other bugs prevent storage from being properly created
-            s.finished();
+      writingExecutor_.submit(new Runnable() {
+         @Override
+         public void run() {
+            if (finished_) {
+               return;
+            }
+            fullResStorage_.finished();
+            for (ResolutionLevel s : lowResStorages_.values()) {
+               if (s != null) {
+                  //s shouldn't be null ever, this check is to prevent window from getting into unclosable state
+                  //when other bugs prevent storage from being properly created
+                  s.finished();
+               }
+            }
+            writingExecutor_.shutdown();
+            // Close now occurs on same executor so this block should no longer be needed
+
+//            //shut down writing executor--pause here until all tasks have finished writing
+//            //so that no attempt is made to close the dataset (and thus the FileChannel)
+//            //before everything has finished writing
+//            //mkae sure all images have finished writing if they are on seperate thread
+//            try {
+//               writingExecutor_.awaitTermination(5, TimeUnit.MILLISECONDS);
+//            } catch (InterruptedException ex) {
+//               throw new RuntimeException("unexpected interrup when closing image storage");
+//            }
+            finished_ = true;
          }
-      }
-      writingExecutor_.shutdown();
-      //shut down writing executor--pause here until all tasks have finished writing
-      //so that no attempt is made to close the dataset (and thus the FileChannel)
-      //before everything has finished writing
-      //mkae sure all images have finished writing if they are on seperate thread 
-      try {
-         writingExecutor_.awaitTermination(5, TimeUnit.MILLISECONDS);
-      } catch (InterruptedException ex) {
-         throw new RuntimeException("unexpected interrup when closing image storage");
-      }
-      finished_ = true;
+      });
    }
 
    public boolean isFinished() {
@@ -1076,24 +1109,21 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
    public void close() {
       //put closing on differnt channel so as to not hang up EDT while waiting for finishing
-      new Thread(new Runnable() {
+      writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
-            while (!finished_) {
-               try {
-                  Thread.sleep(5);
-               } catch (InterruptedException ex) {
-                  throw new RuntimeException("closing thread interrupted");
-               }
+            System.err.println("Cannot close dataset before its finished");
+            if (!finished_) {
+               throw new RuntimeException("Cannot close dataset before its finished");
             }
             fullResStorage_.close();
             for (ResolutionLevel s : lowResStorages_.values()) {
-               if (s != null) { //this only happens if the viewer requested new resolution levels that were never filled in because no iamges arrived                  
+               if (s != null) { //this only happens if the viewer requested new resolution levels that were never filled in because no iamges arrived
                   s.close();
                }
             }
          }
-      }, "closing thread").start();
+      });
    }
 
    public String getDiskLocation() {
@@ -1103,18 +1133,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
    public int getNumChannels() {
       return fullResStorage_.getNumChannels();
-   }
-
-   public int getNumFrames() {
-      return fullResStorage_.getMaxFrameIndexOpenedDataset() + 1;
-   }
-
-   public int getMinSliceIndexOpenedDataset() {
-      return fullResStorage_.getMinSliceIndexOpenedDataset();
-   }
-
-   public int getMaxSliceIndexOpenedDataset() {
-      return fullResStorage_.getMaxSliceIndexOpenedDataset();
    }
 
    public long getDataSetSize() {
@@ -1195,6 +1213,69 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    @Override
    public Set<HashMap<String, Integer>> getAxesSet() {
       return imageAxes_;
+   }
+
+
+   //
+   // Buffer allocation and recycling
+   //
+
+   // The idea here is to recycle the direct buffers for image pixels, because
+   // allocation is slow. We do not need a large pool,
+   // because the only aim is to avoid situations where allocation is limiting
+   // at steady state. If writing is, on average, faster than incoming images,
+   // the pool should always have a buffer ready for a new request.
+   // Ideally we would also evict unused buffers after a timeout, so as not to
+   // leak memory after writing has concluded.
+
+
+   private static Buffer allocateByteBuffer(int capacity) {
+      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
+              ByteBuffer.allocateDirect(capacity) :
+              ByteBuffer.allocate(capacity);
+      b = ((ByteBuffer) b).order(ByteOrder.nativeOrder());
+      return b;
+   }
+
+
+   Buffer getBuffer(int capacity) {
+      if (capacity < BUFFER_RECYCLE_SIZE_MIN) {
+         return allocateByteBuffer(capacity);
+      }
+      if (BUFFER_POOL_SIZE == 0) {
+         Buffer b =  allocateByteBuffer(capacity);
+         return b;
+      }
+
+      if (!pooledBuffers_.containsKey(capacity)) {
+         pooledBuffers_.put(capacity, new ArrayDeque<>(BUFFER_POOL_SIZE));
+      }
+
+      // Recycle in LIFO order (smaller images may still be in L3 cache)
+      Buffer b = pooledBuffers_.get(capacity).pollFirst();
+
+      if (b != null) {
+         // Ensure correct byte order in case recycled from other source
+         ((ByteBuffer)b).order(ByteOrder.nativeOrder());
+         b.clear();
+         return b;
+      }
+      return allocateByteBuffer(capacity);
+   }
+
+   void tryRecycleLargeBuffer(ByteBuffer b) {
+      // Keep up to BUFFER_POOL_SIZE direct buffers of the current size
+      if (BUFFER_POOL_SIZE == 0 || !b.isDirect()) {
+         return;
+      }
+      if (!pooledBuffers_.containsKey(b.capacity())) {
+         pooledBuffers_.put(b.capacity(), new ArrayDeque<>(BUFFER_POOL_SIZE));
+      }
+
+      if (pooledBuffers_.get(b.capacity()).size() == BUFFER_POOL_SIZE) {
+         pooledBuffers_.get(b.capacity()).removeLast(); // Discard oldest
+      }
+      pooledBuffers_.get(b.capacity()).addFirst(b);
    }
 
 }

@@ -81,11 +81,10 @@ public class MultipageTiffWriter {
 
    public static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
 
-   private ResolutionLevel masterMPTiffStorage_;
+   private MultiResMultipageTiffStorage masterMPTiffStorage_;
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
-   private ExecutorService writingExecutor_;
-   private long filePosition_ = 0;
+   private volatile long filePosition_ = 0;
    private long indexMapPosition_; //current position of the dynamically written index map
    private long indexMapFirstEntry_; // mark position of first entry so that number of entries can be written at end
    private int bufferPosition_;
@@ -97,17 +96,13 @@ public class MultipageTiffWriter {
    private double zStepUm_ = 1;
    private LinkedList<ByteBuffer> buffers_;
    private boolean firstIFD_ = true;
-   private long ijDescriptionTagPosition_;
-   private long ijMetadataCountsTagPosition_;
-   private long ijMetadataTagPosition_;
    //Reader associated with this file
    private MultipageTiffReader reader_;
    private final String filename_;
    private volatile boolean displayStorer_;
 
    public MultipageTiffWriter(String directory, String filename,
-           JSONObject summaryMD, ResolutionLevel mpTiffStorage,
-           boolean splitByPositions, ExecutorService writingExecutor,
+           JSONObject summaryMD, MultiResMultipageTiffStorage mpTiffStorage,
            int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
       displayStorer_ = false;
       masterMPTiffStorage_ = mpTiffStorage;
@@ -151,7 +146,6 @@ public class MultipageTiffWriter {
          throw new RuntimeException("Insufficent space on disk: no room to write data");
       }
       fileChannel_ = raFile_.getChannel();
-      writingExecutor_ = writingExecutor;
       indexMap_ = new ConcurrentHashMap<String, Long>();
       reader_.setFileChannel(fileChannel_);
       reader_.setIndexMap(indexMap_);
@@ -160,118 +154,27 @@ public class MultipageTiffWriter {
       writeMMHeaderAndSummaryMD(summaryMD);
    }
 
-
-   //
-   // Buffer allocation and recycling
-   //
-
-   // The idea here is to recycle the direct buffers for image pixels, because
-   // allocation is slow. We do not need a large pool,
-   // because the only aim is to avoid situations where allocation is limiting
-   // at steady state. If writing is, on average, faster than incoming images,
-   // the pool should always have a buffer ready for a new request.
-   // Ideally we would also evict unused buffers after a timeout, so as not to
-   // leak memory after writing has concluded.
-
-   private static final int BUFFER_DIRECT_THRESHOLD = 1024;
-   private static Buffer allocateByteBuffer(int capacity) {
-      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
-              ByteBuffer.allocateDirect(capacity) :
-              ByteBuffer.allocate(capacity);
-      b = ((ByteBuffer) b).order(BYTE_ORDER);
-      return b;
+   private void fileChannelWrite(final Buffer buffer, final long position) {
+      try {
+         buffer.rewind();
+         fileChannel_.write((ByteBuffer) buffer, position);
+      } catch (ClosedChannelException e) {
+         throw new RuntimeException(e);
+      } catch (IOException e) {
+         throw new RuntimeException(e);
+      }
+      masterMPTiffStorage_.tryRecycleLargeBuffer((ByteBuffer) buffer);
    }
 
-   private static final int BUFFER_POOL_SIZE =
-           System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
-   private static final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
-   static {
-      if (BUFFER_POOL_SIZE > 0) {
-         pooledBuffers_ = new ConcurrentHashMap<Integer, Deque<ByteBuffer>>();
+   private void fileChannelWrite(final ByteBuffer[] buffers) {
+      try {
+         long numBytesWritten = fileChannel_.write(buffers);
+      } catch (IOException e) {
+         throw new RuntimeException(e);
       }
-      else {
-         pooledBuffers_ = null;
+      for (ByteBuffer buffer : buffers) {
+         masterMPTiffStorage_.tryRecycleLargeBuffer(buffer);
       }
-   }
-
-   private static Buffer getLargeBuffer(int capacity) {
-      if (BUFFER_POOL_SIZE == 0) {
-         Buffer b =  allocateByteBuffer(capacity);
-         return b;
-      }
-
-      synchronized (MultipageTiffWriter.class) {
-
-         if (!pooledBuffers_.containsKey(capacity)) {
-            pooledBuffers_.put(capacity, new ArrayDeque<>(BUFFER_POOL_SIZE));
-         }
-
-         // Recycle in LIFO order (smaller images may still be in L3 cache)
-         Buffer b = pooledBuffers_.get(capacity).pollFirst();
-
-         if (b != null) {
-            // Ensure correct byte order in case recycled from other source
-            ((ByteBuffer)b).order(BYTE_ORDER);
-            b.clear();
-            return b;
-         }
-      }
-      return allocateByteBuffer(capacity);
-   }
-
-   private static void tryRecycleLargeBuffer(ByteBuffer b) {
-      // Keep up to BUFFER_POOL_SIZE direct buffers of the current size
-      if (BUFFER_POOL_SIZE == 0 || !b.isDirect()) {
-         return;
-      }
-      synchronized (MultipageTiffWriter.class) {
-            if (pooledBuffers_.get(b.capacity()).size() == BUFFER_POOL_SIZE) {
-               pooledBuffers_.get(b.capacity()).removeLast(); // Discard oldest
-            }
-         pooledBuffers_.get(b.capacity()).addFirst(b);
-      }
-   }
-
-
-   private Future executeWritingTask(Runnable writingTask) {
-      return writingExecutor_.submit(writingTask);
-   }
-
-   private Future fileChannelWrite(final Buffer buffer, final long position) {
-      return executeWritingTask(
-              new Runnable() {
-         @Override
-         public void run() {
-            try {
-               buffer.rewind();
-               fileChannel_.write((ByteBuffer) buffer, position);
-//               fileChannel_.force(false);
-            } catch (ClosedChannelException e) {
-               throw new RuntimeException(e);
-            } catch (IOException e) {
-               throw new RuntimeException(e);
-            }
-            tryRecycleLargeBuffer((ByteBuffer) buffer);
-         }
-      });
-   }
-
-   private Future fileChannelWrite(final ByteBuffer[] buffers) {
-      return executeWritingTask(
-              new Runnable() {
-         @Override
-         public void run() {
-
-            try {
-               fileChannel_.write(buffers);
-            } catch (IOException e) {
-               throw new RuntimeException(e);
-            }
-            for (ByteBuffer buffer : buffers) {
-               tryRecycleLargeBuffer(buffer);
-            }
-         }
-      });
    }
 
    public MultipageTiffReader getReader() {
@@ -292,7 +195,7 @@ public class MultipageTiffWriter {
       long maxImagesInFile = MAX_FILE_SIZE / bytesPerImagePixels_;
       long indexMapSpace = 8 + 20 * maxImagesInFile;
 
-      ByteBuffer headerBuffer = (ByteBuffer) allocateByteBuffer(40);
+      ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getBuffer(40);
       //8 bytes for file header
       if (BYTE_ORDER.equals(ByteOrder.BIG_ENDIAN)) {
          headerBuffer.asCharBuffer().put(0, (char) 0x4d4d);
@@ -320,7 +223,7 @@ public class MultipageTiffWriter {
       headerBuffer.putInt(32, SUMMARY_MD_HEADER);
       headerBuffer.putInt(36, mdLength);
 
-      ByteBuffer indexMapBuffer = (ByteBuffer) allocateByteBuffer((int) indexMapSpace);
+      ByteBuffer indexMapBuffer = (ByteBuffer) masterMPTiffStorage_.getBuffer((int) indexMapSpace);
       indexMapBuffer.putInt(0, INDEX_MAP_HEADER);
       indexMapBuffer.putInt(4, (int) maxImagesInFile);
       indexMapPosition_ = headerBuffer.capacity() + mdLength + 8;
@@ -337,16 +240,7 @@ public class MultipageTiffWriter {
 
       if (filePosition_ % 2 == 1) {
          filePosition_++;
-         executeWritingTask(new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  fileChannel_.position(fileChannel_.position() + 1);
-               } catch (IOException ex) {
-                  throw new RuntimeException("Couldn't reposition file channel");
-               }
-            }
-         });
+         fileChannel_.position(fileChannel_.position() + 1);
       }
    }
 
@@ -359,45 +253,38 @@ public class MultipageTiffWriter {
     *
     * Returns a Future for when writing is done
     */
-   public Future finishedWriting() throws IOException, ExecutionException, InterruptedException {
-      Future f = writeNullOffsetAfterLastImage();
+   public void finishedWriting() throws IOException, ExecutionException, InterruptedException {
+      writeNullOffsetAfterLastImage();
       //go back to the index map header and change the number of entries from the max
       //value allotted early to the actual number written
       //The MultipageTiffReader no longer needs this because it interperets 0's as the 
       //the end of the index map. It is added here for backwards compatibility of reading
       //using versions of MM before 6-6-2014. Without it, old versions wouldn't correctly read image 0_0_0_0
       int numImages = (int) ((indexMapPosition_ - indexMapFirstEntry_) / 20);
-      ByteBuffer indexMapNumEntries = (ByteBuffer) allocateByteBuffer(4);
+      ByteBuffer indexMapNumEntries = (ByteBuffer) masterMPTiffStorage_.getBuffer(4);
       indexMapNumEntries.putInt(0, numImages);
-      Future finished = fileChannelWrite(indexMapNumEntries, indexMapFirstEntry_ - 4);
+      fileChannelWrite(indexMapNumEntries, indexMapFirstEntry_ - 4);
       try {
          //extra byte of space, just to make sure nothing gets cut off
          raFile_.setLength(filePosition_ + 8);
       } catch (IOException ex) {
          throw new RuntimeException(ex);
       }
-      return finished;
    }
 
    /**
     * Called when entire set of files (i.e. acquisition) is finished. returns a
     * future that returns when its done, if you care
     */
-   public Future close() throws IOException, InterruptedException, ExecutionException {
+   public void close() throws IOException, InterruptedException, ExecutionException {
       if (displayStorer_) {
-         Future f = writeDisplaySettings(masterMPTiffStorage_.getDisplaySettings());
+         writeDisplaySettings(masterMPTiffStorage_.getDisplaySettings());
       }
 
-      Future f = executeWritingTask(new Runnable() {
-         @Override
-         public void run() {
 //            reader_.finishedWriting();
-            //Dont close file channel and random access file becase Tiff reader still using them
-            fileChannel_ = null;
-            raFile_ = null;
-         }
-      });
-      return f;
+      //Dont close file channel and random access file becase Tiff reader still using them
+      fileChannel_ = null;
+      raFile_ = null;
    }
 
    public boolean hasSpaceToWrite(TaggedImage img) {
@@ -418,36 +305,28 @@ public class MultipageTiffWriter {
       return raFile_ == null;
    }
 
-   public Future writeImage(TaggedImage img, int t, int c, int z, int p) throws IOException {
+   public void writeImage(TaggedImage img, int t, int c, int z, int p) throws IOException {
       long offset = filePosition_;
       boolean shiftByByte = writeIFD(img);
-
-      Future f = writeBuffers();
+      writeBuffers();
 
       String label = c + "_" + z + "_" + t + "_" + p;
 
       addToIndexMap(label, offset);
       //Make IFDs start on word
       if (shiftByByte) {
-
-         f = executeWritingTask(new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  fileChannel_.position(fileChannel_.position() + 1);
-               } catch (IOException ex) {
-                  throw new RuntimeException("Couldn't incremement byte");
-               }
-            }
-         });
+         try {
+            fileChannel_.position(fileChannel_.position() + 1);
+         } catch (IOException ex) {
+            throw new RuntimeException("Couldn't incremement byte");
+         }
       }
-      return f;
    }
 
    private void addToIndexMap(String label, long offset) {
       //If a duplicate label is received, forget about the previous one
       //this allows overwriting of images without loss of data
-      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(20);
+      ByteBuffer buffer = (ByteBuffer) masterMPTiffStorage_.getBuffer(20);
       String[] indices = label.split("_");
       for (int i = 0; i < 4; i++) {
          buffer.putInt(4 * i, Integer.parseInt(indices[i]));
@@ -458,12 +337,12 @@ public class MultipageTiffWriter {
       indexMap_.put(label, offset);
    }
 
-   private Future writeBuffers() throws IOException {
+   private void writeBuffers() throws IOException {
       ByteBuffer[] buffs = new ByteBuffer[buffers_.size()];
       for (int i = 0; i < buffs.length; i++) {
          buffs[i] = buffers_.removeFirst();
       }
-      return fileChannelWrite(buffs);
+      fileChannelWrite(buffs);
    }
 
    private long unsignInt(int i) {
@@ -474,7 +353,7 @@ public class MultipageTiffWriter {
       return val;
    }
 
-   public Future overwritePixels(Object pixels, int channel, int slice, int frame, int position) throws IOException {
+   public void overwritePixels(Object pixels, int channel, int slice, int frame, int position) throws IOException {
 
       long byteOffset = indexMap_.get(channel + "_" + slice + "_" + frame + "_" + position);
       ByteBuffer buffer = ByteBuffer.allocate(2).order(BYTE_ORDER);
@@ -505,8 +384,7 @@ public class MultipageTiffWriter {
                  + "\n But full resolution data is unaffected");
       }
       Buffer pixBuff = getPixelBuffer(pixels);
-      Future writingDone = fileChannelWrite(pixBuff, pixelOffset);
-      return writingDone;
+      fileChannelWrite(pixBuff, pixelOffset);
    }
 
    private boolean writeIFD(TaggedImage img) throws IOException {
@@ -522,7 +400,7 @@ public class MultipageTiffWriter {
       int totalBytes = 2 + numEntries * 12 + 4 + (rgb_ ? 6 : 0) + 16 + mdBytes.length + bytesPerImagePixels_;
       int IFDandBitDepthBytes = 2 + numEntries * 12 + 4 + (rgb_ ? 6 : 0);
 
-      ByteBuffer ifdBuffer = (ByteBuffer) allocateByteBuffer(IFDandBitDepthBytes);
+      ByteBuffer ifdBuffer = (ByteBuffer) masterMPTiffStorage_.getBuffer(IFDandBitDepthBytes);
 
       CharBuffer charView = ifdBuffer.asCharBuffer();
 
@@ -600,7 +478,7 @@ public class MultipageTiffWriter {
    }
 
    private ByteBuffer getResolutionValuesBuffer() throws IOException {
-      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(16);
+      ByteBuffer buffer = (ByteBuffer) masterMPTiffStorage_.getBuffer(16);
       buffer.putInt(0, (int) resNumerator_);
       buffer.putInt(4, (int) resDenomenator_);
       buffer.putInt(8, (int) resNumerator_);
@@ -649,7 +527,7 @@ public class MultipageTiffWriter {
          } else {
 //            System.out.println("Java version " + getVersion());
             short[] pix = (short[]) pixels;
-            Buffer buffer = getLargeBuffer(pix.length * 2);
+            Buffer buffer = masterMPTiffStorage_.getBuffer(pix.length * 2);
             buffer.rewind();
             ((ByteBuffer) buffer).asShortBuffer().put(pix);
             return (ByteBuffer) buffer;
@@ -705,15 +583,14 @@ public class MultipageTiffWriter {
       }
    }
 
-   private Future writeNullOffsetAfterLastImage() throws IOException, InterruptedException, ExecutionException {
-      ByteBuffer buffer = (ByteBuffer) allocateByteBuffer(4);
+   private void writeNullOffsetAfterLastImage() throws IOException, InterruptedException, ExecutionException {
+      ByteBuffer buffer = (ByteBuffer) masterMPTiffStorage_.getBuffer(4);
       buffer.putInt(0, 0);
-      Future finished = fileChannelWrite(buffer, nextIFDOffsetLocation_);
-      return finished;
+      fileChannelWrite(buffer, nextIFDOffsetLocation_);
    }
 
-   private Future writeDisplaySettings(JSONObject displaySettings) throws IOException, InterruptedException, ExecutionException {
-      ByteBuffer header = (ByteBuffer) allocateByteBuffer(8);
+   private void writeDisplaySettings(JSONObject displaySettings) throws IOException, InterruptedException, ExecutionException {
+      ByteBuffer header = (ByteBuffer) masterMPTiffStorage_.getBuffer(8);
       ByteBuffer buffer = ByteBuffer.wrap(getBytesFromString(displaySettings.toString()));
       int numReservedBytes = buffer.capacity();
       header.putInt(0, DISPLAY_SETTINGS_HEADER);
@@ -721,12 +598,11 @@ public class MultipageTiffWriter {
       fileChannelWrite(header, filePosition_);
       fileChannelWrite(buffer, filePosition_ + 8);
 
-      ByteBuffer offsetHeader = (ByteBuffer) allocateByteBuffer(8);
+      ByteBuffer offsetHeader = (ByteBuffer) masterMPTiffStorage_.getBuffer(8);
       offsetHeader.putInt(0, DISPLAY_SETTINGS_OFFSET_HEADER);
       offsetHeader.putInt(4, (int) filePosition_);
-      Future done = fileChannelWrite(offsetHeader, 16);
+      fileChannelWrite(offsetHeader, 16);
       filePosition_ += numReservedBytes + 8;
-      return done;
    }
 
    void setDisplayStorer() {

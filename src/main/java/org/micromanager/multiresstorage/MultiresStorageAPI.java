@@ -5,6 +5,7 @@ import mmcorej.TaggedImage;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.Future;
 
 /**
  * API of storage that includes multi-resolution support, in addition to the base features
@@ -28,13 +29,13 @@ public interface MultiresStorageAPI extends StorageAPI{
    /**
     * Add an image into storage, which corresponds to a particular row/column in
     * a larger stitched image
-    *
-    * @param taggedImg
+    *  @param taggedImg
     * @param axes
     * @param row
     * @param col
+    * @return
     */
-   public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, int row, int col);
+   public Future putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, int row, int col);
 
    /**
     * return number of resolutions of the multiresolution pyramid
