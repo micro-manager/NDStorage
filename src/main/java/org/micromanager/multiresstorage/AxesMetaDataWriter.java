@@ -4,10 +4,12 @@ import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
-import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 
 public class AxesMetaDataWriter {
 
@@ -16,77 +18,53 @@ public class AxesMetaDataWriter {
 
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
-   private ExecutorService writingExecutor_;
-   private long filePosition_ = 0;
-   private long indexMapPosition_; //current position of the dynamically written index map
-   private long indexMapFirstEntry_; // mark position of first entry so that number of entries can be written at end
-   private int bufferPosition_;
+   private HashSet<String> channelNames_ = new HashSet<String>();
 
 
-   public AxesMetaDataWriter(String directory, ExecutorService writingExecutor) throws IOException {
-      writingExecutor_ = writingExecutor;
-      String filename = "Axes_metedata.txt";
+   public AxesMetaDataWriter(String directory) throws IOException {
+      String filename = "Axes_metedata";
       File f = new File(directory + "/" + filename);
 
       f.createNewFile();
       raFile_ = new RandomAccessFile(f, "rw");
       try {
          raFile_.setLength(INITIAL_FILE_SIZE);
+         fileChannel_ = raFile_.getChannel();
       } catch (IOException e) {
-         new Thread(new Runnable() {
-
+         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-               try {
-                  Thread.sleep(1000);
-               } catch (InterruptedException ex) {
-               }
+               JOptionPane.showMessageDialog(null, "Insufficient space on disk to write data",
+                       "Error", JOptionPane.ERROR_MESSAGE);
             }
-         }).start();
-         JOptionPane.showMessageDialog(null, "Insufficient space on disk to write data",
-                 "Error", JOptionPane.ERROR_MESSAGE);
+         });
          throw new RuntimeException("Insufficent space on disk: no room to write data");
       }
-      fileChannel_ = raFile_.getChannel();
    }
 
-   public void addEntry(HashMap<String, Integer> axes) {
-      //TODO: write the data
-      long offset = filePosition_;
-//      boolean shiftByByte = writeIFD(img);
-//
-//      Future f = writeBuffers();
-//
-//      String label = c + "_" + z + "_" + t + "_" + p;
-//
-//      addToIndexMap(label, offset);
-//      //Make IFDs start on word
-//      if (shiftByByte) {
-//
-//         f = executeWritingTask(new Runnable() {
-//            @Override
-//            public void run() {
-//               try {
-//                  fileChannel_.position(fileChannel_.position() + 1);
-//               } catch (IOException ex) {
-//                  throw new RuntimeException("Couldn't incremement byte");
-//               }
-//            }
-//         });
-//
-//      return f;
+   public void addEntry(int channelIndex, int superChannelIndex,
+                        String channelName, String superChannelName) throws IOException {
+      if (!channelNames_.contains(channelName)) {
+         // Add metadata about channel name and index
+         Buffer flagAndIndexAndLength = ByteBuffer.allocate(12).order(ByteOrder.nativeOrder());
+         ((ByteBuffer) flagAndIndexAndLength).asIntBuffer().put(new int[]{-1, channelIndex, channelName.length()});
+         Buffer stringBuffer = ByteBuffer.wrap(channelName.getBytes(StandardCharsets.ISO_8859_1));
+         fileChannel_.write(new ByteBuffer[]{(ByteBuffer)  flagAndIndexAndLength, (ByteBuffer) stringBuffer});
+         channelNames_.add(channelName);
+      }
+      Buffer indexAndLength = ByteBuffer.allocate(8).order(ByteOrder.nativeOrder());
+      ((ByteBuffer) indexAndLength).asIntBuffer().put(new int[]{superChannelIndex, superChannelName.length()});
+      Buffer stringBuffer = ByteBuffer.wrap(superChannelName.getBytes(StandardCharsets.ISO_8859_1));
+      fileChannel_.write(new ByteBuffer[]{(ByteBuffer)  indexAndLength, (ByteBuffer) stringBuffer});
    }
 
-//TODO keep track of file length
-
-public void finishedWriting() throws IOException {
+public void finishedWriting()  {
    try {
-      //extra byte of space, just to make sure nothing gets cut off
-      raFile_.setLength(filePosition_ + 8);
+      raFile_.setLength(fileChannel_.position());
+      raFile_.close();
    } catch (IOException ex) {
       throw new RuntimeException(ex);
    }
-   raFile_.close();
 }
 
 }

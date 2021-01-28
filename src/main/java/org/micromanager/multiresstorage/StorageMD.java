@@ -16,6 +16,7 @@ import mmcorej.org.json.JSONObject;
  */
 class StorageMD {
 
+   private static final String CHANNEL_NAME = "Channel";
    private static final String SUPER_CHANNEL_NAME = "StorageSuperChannelName";
    private static final String AXES = "ImageStorageAxesPositions";
    private static final String GRID_COL = "GridColumnIndex";
@@ -74,6 +75,14 @@ class StorageMD {
    }
 
    public static String getChannelName(JSONObject map) {
+      try {
+         return map.getString(CHANNEL_NAME);
+      } catch (JSONException ex) {
+         throw new RuntimeException("Missing channel index tag");
+      }
+   }
+
+   public static String getSuperChannelName(JSONObject map) {
       try {
          return map.getString(SUPER_CHANNEL_NAME);
       } catch (JSONException ex) {

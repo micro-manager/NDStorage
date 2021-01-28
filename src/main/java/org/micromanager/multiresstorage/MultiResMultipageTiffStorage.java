@@ -105,6 +105,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
       //reconstruct map of super channel names to channel indices, and set
       //of all image axes
+      //TODO: read this from the metadata file to speed up performance
       for (String s : fullResStorage_.imageKeys()) {
          HashMap<String, Integer> map = new HashMap<String, Integer>();
          String[] indices = s.split("_");
@@ -113,8 +114,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          int tIndex = Integer.parseInt(indices[2]);
          int pIndex = Integer.parseInt(indices[3]);
          if (!superChannelNames_.values().contains(cIndex)) {
-            String channelName = StorageMD.getChannelName(fullResStorage_.getImageTags(cIndex, zIndex, tIndex, pIndex));
-            superChannelNames_.put(channelName, cIndex);
+            String superChannelName = StorageMD.getSuperChannelName(fullResStorage_.getImageTags(cIndex, zIndex, tIndex, pIndex));
+            superChannelNames_.put(superChannelName, cIndex);
          }
          String channelName = null;
          for (String name : superChannelNames_.keySet()) {
@@ -241,26 +242,18 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          throw new RuntimeException("Couldnt copy summary metadata");
       }
 
+      //prefix is provided by summary metadata
+      try {
+         uniqueAcqName_ = getUniqueAcqDirName(dir, name);
+         //create acqusition directory for actual data
+         directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
+      } catch (Exception e) {
+         throw new RuntimeException("Couldn't make acquisition directory");
+      }
+
       writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
-
-            //prefix is provided by summary metadata
-            try {
-               uniqueAcqName_ = getUniqueAcqDirName(dir, name);
-               //create acqusition directory for actual data
-               directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
-            } catch (Exception e) {
-               throw new RuntimeException("Couldn't make acquisition directory");
-            }
-//            try {
-//               axesMetadataWriter_ = new AxesMetaDataWriter(directory_ +
-//                       (dir.endsWith(File.separator) ? "" : File.separator) , writingExecutor_);
-//            } catch (IOException e) {
-//               e.printStackTrace();
-//            }
-
-
             //create directory for full res data
             String fullResDir = directory_ + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
             try {
@@ -285,6 +278,13 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                throw new RuntimeException("couldn't create Full res storage");
             }
             lowResStorages_ = new TreeMap<Integer, ResolutionLevel>();
+            try {
+               axesMetadataWriter_ = new AxesMetaDataWriter(directory_ + (dir.endsWith(File.separator) ? "" : File.separator) );
+            } catch (IOException e) {
+               e.printStackTrace();
+               throw new RuntimeException(e);
+            }
+
          }
       });
    }
@@ -890,7 +890,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          for (String scName : superChannelNames_.keySet()) {
             boolean matchesAll = true;
             for (String axis : axesCopy.keySet()) {
-               if (scName.contains("Axis_" + axis) && 
+               if (scName.contains("Axis_" + axis) &&
                        !scName.contains("Axis_" + axis + "_" + axesCopy.get(axis))) {
                   matchesAll = false;
                }
@@ -898,9 +898,15 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             if (matchesAll) {
                return scName;
             }
-         } 
-         System.err.println("Couldn't find super channel index");
-       return null;
+         }
+//         System.err.println("Couldn't find super channel index");
+//         StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+//         for (int i = 1; i < elements.length; i++) {
+//            StackTraceElement s = elements[i];
+//            System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+//         }
+
+         return null;
       } else {
          if (!superChannelNames_.keySet().contains(superChannel) && addNew) {
             int superChannelIndex = superChannelNames_.size();
@@ -953,6 +959,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                fullResStorage_.putImage(ti, prefix_,
                        tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex);
 
+               axesMetadataWriter_.addEntry(axes.containsKey(CHANNEL_AXIS) ? axes.get(CHANNEL_AXIS) : 0,
+                       superChannelNames_.get(superChannelName), StorageMD.getChannelName(ti.tags), superChannelName);
             } catch (IOException ex) {
                throw new RuntimeException(ex.toString());
             }
@@ -997,6 +1005,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                //write to full res storage as normal (i.e. with overlap pixels present)
                fullResStorage_.putImage(ti, prefix_,
                        tIndex, superChannelNames_.get(superChannelName), zIndex, pIndex);
+               axesMetadataWriter_.addEntry(axes.containsKey(CHANNEL_AXIS) ? axes.get(CHANNEL_AXIS) : 0,
+                       superChannelNames_.get(superChannelName), StorageMD.getChannelName(ti.tags), superChannelName);
 
                if (tiled_) {
                   //check if maximum resolution level needs to be updated based on full size of image
@@ -1078,18 +1088,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                   s.finished();
                }
             }
-            writingExecutor_.shutdown();
-            // Close now occurs on same executor so this block should no longer be needed
+            axesMetadataWriter_.finishedWriting();
 
-//            //shut down writing executor--pause here until all tasks have finished writing
-//            //so that no attempt is made to close the dataset (and thus the FileChannel)
-//            //before everything has finished writing
-//            //mkae sure all images have finished writing if they are on seperate thread
-//            try {
-//               writingExecutor_.awaitTermination(5, TimeUnit.MILLISECONDS);
-//            } catch (InterruptedException ex) {
-//               throw new RuntimeException("unexpected interrup when closing image storage");
-//            }
+            writingExecutor_.shutdown();
             finished_ = true;
          }
       });
