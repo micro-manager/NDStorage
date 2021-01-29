@@ -26,10 +26,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
@@ -216,19 +214,6 @@ public final class ResolutionLevel {
       String label = cIndex + "_" + zIndex + "_" + tIndex + "_" + posIndex;
       maxChannelIndex_ = Math.max(maxChannelIndex_, Integer.parseInt(label.split("_")[0]));
       writePendingImages_.put(label, taggedImage);
-      startWritingTask(label, prefix, taggedImage,
-              tIndex, cIndex, zIndex, posIndex);
-      writePendingImages_.remove(label);
-   }
-
-   /*
-    * Sets up and kicks off the writing of a new image. This, in an indirect
-    * way, ends up submitting the writing task to writingExecutor_.
-    */
-   private void startWritingTask(String label, String prefix, TaggedImage ti,
-           int tIndex, int cIndex, int zIndex, int posIndex)
-           throws IOException {
-
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
       }
@@ -245,11 +230,13 @@ public final class ResolutionLevel {
          fileSet_ = new FileSet(prefix);
       }
       try {
-         fileSet_.writeImage(ti, tIndex, cIndex, zIndex, posIndex);
+         fileSet_.writeImage(taggedImage, tIndex, cIndex, zIndex, posIndex);
          tiffReadersByLabel_.put(label, fileSet_.getCurrentReader());
       } catch (IOException ex) {
          throw new RuntimeException("problem writing image to file");
       }
+
+      writePendingImages_.remove(label);
    }
 
    public Set<String> imageKeys() {
@@ -511,9 +498,16 @@ public final class ResolutionLevel {
            int cIndex, int zIndex, int posIndex) throws IOException {
             //check if current writer is out of space, if so, make a new one
             if (!tiffWriters_.getLast().hasSpaceToWrite(img)) {
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Creating new tiff file: tczp: " + tIndex + "  " +
+                          cIndex + " " + zIndex + " " + posIndex);
+               }
                try {
                   //write index map here but still need to call close() at end of acq
                   tiffWriters_.getLast().finishedWriting();
+                  if (masterMultiResStorage_.debugLogger_ != null) {
+                     masterMultiResStorage_.debugLogger_.accept("finished existing file");
+                  }
                } catch (Exception ex) {
                   throw new RuntimeException(ex);
                }
@@ -525,6 +519,9 @@ public final class ResolutionLevel {
                           summaryMetadata_, masterMultiResStorage_,
                           imageWidth_, imageHeight_, rgb_, byteDepth_
                   ));
+                  if (masterMultiResStorage_.debugLogger_ != null) {
+                     masterMultiResStorage_.debugLogger_.accept("Constructed new file");
+                  }
                } catch (IOException e) {
                   e.printStackTrace();
                   throw new RuntimeException(e);
@@ -540,7 +537,14 @@ public final class ResolutionLevel {
 
             //write image
             try {
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Writing image tczp: " + tIndex + "  " +
+                          cIndex + " " + zIndex + " " + posIndex);
+               }
                tiffWriters_.getLast().writeImage(img, tIndex, cIndex, zIndex, posIndex);
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Finished writing image");
+               }
             } catch (IOException e) {
                e.printStackTrace();
                throw new RuntimeException(e);

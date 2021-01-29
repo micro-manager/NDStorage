@@ -273,8 +273,7 @@ public class MultipageTiffWriter {
    }
 
    /**
-    * Called when entire set of files (i.e. acquisition) is finished. returns a
-    * future that returns when its done, if you care
+    * Called when entire set of files (i.e. acquisition) is finished
     */
    public void close() throws IOException, InterruptedException, ExecutionException {
       if (displayStorer_) {

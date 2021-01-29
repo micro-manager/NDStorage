@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mmcorej.TaggedImage;
@@ -73,6 +74,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private final Integer externalMaxResLevel_;
    private String prefix_;
    private AxesMetaDataWriter axesMetadataWriter_;
+   Consumer<String> debugLogger_ = null;
+   private LinkedBlockingQueue<Runnable> writingTaskQueue_;
 
    private static final int BUFFER_DIRECT_THRESHOLD = 1024;
    private static final int BUFFER_RECYCLE_SIZE_MIN = 16;
@@ -206,7 +209,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
            int overlapX, int overlapY, int width, int height, int byteDepth, boolean tiled,
-                                       Integer externalMaxResLevel, boolean rgb) {
+                                       Integer externalMaxResLevel, boolean rgb, Consumer<String> debugLogger) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -218,6 +221,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       prefix_ = name;
       rgb_ = rgb;
+      debugLogger_ = debugLogger;
 
       if (BUFFER_POOL_SIZE > 0) {
          pooledBuffers_ = new ConcurrentHashMap<Integer, Deque<ByteBuffer>>();
@@ -226,12 +230,16 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
 
       loaded_ = false;
-      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
-         @Override
-         public Thread newThread(Runnable r) {
-            return new Thread(r, "Multipage Tiff data writing executor");
-         }
-      });
+//      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
+//         @Override
+//         public Thread newThread(Runnable r) {
+//            return new Thread(r, "Multipage Tiff data writing executor");
+//         }
+//      });
+
+      writingTaskQueue_ = new LinkedBlockingQueue<Runnable>();
+      writingExecutor_ = new ThreadPoolExecutor(1,1,1,TimeUnit.MILLISECONDS, writingTaskQueue_);
+
       try {
          //make a copy in case tag changes are needed later
          summaryMD_ = new JSONObject(summaryMetadata.toString());
@@ -927,6 +935,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     * @param axessss
     */
    public void putImage(TaggedImage ti, HashMap<String, Integer> axessss) {
+      if (debugLogger_ != null) {
+         debugLogger_.accept("Adding image " + getAxesString(axessss) +
+                 ". Remaining writing task queue size = " + writingTaskQueue_.size());
+      }
       writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
@@ -937,7 +949,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             try {
                //Make a local copy
                HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
-               List<Future> writeFinishedList = new ArrayList<Future>();
                imageAxes_.add(axes);
 
                int pIndex = axes.containsKey(POSITION_AXIS) ? axes.get(POSITION_AXIS) : 0;
@@ -966,6 +977,14 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             }
          }
       });
+   }
+
+   static String getAxesString(HashMap<String, Integer> axes) {
+      String s = "";
+      for (String key : axes.keySet()) {
+         s += key + "  " + axes.get(key) + ",  ";
+      }
+      return s;
    }
 
    /**
@@ -1073,7 +1092,13 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
    }
 
+   /**
+    * Singal to finish writing and block until everything pending is done
+    */
    public void finishedWriting() {
+      if (debugLogger_ != null) {
+         debugLogger_.accept("Finished writing. Remaining writing task queue size = " + writingTaskQueue_.size());
+      }
       writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
@@ -1094,6 +1119,18 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             finished_ = true;
          }
       });
+      while (true) {
+         try {
+            if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) {
+               break;
+            }
+         } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+         }
+      }
+      if (debugLogger_ != null) {
+         debugLogger_.accept("Writing executor complete");
+      }
    }
 
    public boolean isFinished() {
