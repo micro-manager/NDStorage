@@ -1116,7 +1116,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             axesMetadataWriter_.finishedWriting();
 
             writingExecutor_.shutdown();
-            finished_ = true;
          }
       });
       while (true) {
@@ -1125,9 +1124,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                break;
             }
          } catch (InterruptedException e) {
+            finished_ = true;
             throw new RuntimeException(e);
          }
       }
+      finished_ = true;
       if (debugLogger_ != null) {
          debugLogger_.accept("Writing executor complete");
       }
