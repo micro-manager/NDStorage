@@ -44,6 +44,8 @@ import javax.swing.*;
  */
 public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorageAPI {
 
+   public static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
+
    public static final String TIME_AXIS = "time";
    public static final String CHANNEL_AXIS = "channel";
    public static final String Z_AXIS = "z";
@@ -77,8 +79,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    Consumer<String> debugLogger_ = null;
    private LinkedBlockingQueue<Runnable> writingTaskQueue_;
 
-   private static final int BUFFER_DIRECT_THRESHOLD = 1024;
-   private static final int BUFFER_RECYCLE_SIZE_MIN = 16;
+   private static final int BUFFER_DIRECT_THRESHOLD = 8192;
+   private static final int BUFFER_RECYCLE_SIZE_MIN = 1024;
    private static final int BUFFER_POOL_SIZE =
            System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
    private final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
@@ -936,8 +938,16 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     */
    public void putImage(TaggedImage ti, HashMap<String, Integer> axessss) {
       if (debugLogger_ != null) {
-         debugLogger_.accept("Adding image " + getAxesString(axessss) +
-                 ". Remaining writing task queue size = " + writingTaskQueue_.size());
+         debugLogger_.accept(
+//                 "Adding image " + getAxesString(axessss) +
+                 "writing_queue_size= " + writingTaskQueue_.size());
+      }
+      while (writingTaskQueue_.size() > 20) {
+         try {
+            Thread.sleep(1);
+         } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+         }
       }
       writingExecutor_.submit(new Runnable() {
          @Override
@@ -1269,15 +1279,19 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
 
    private static Buffer allocateByteBuffer(int capacity) {
-      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
-              ByteBuffer.allocateDirect(capacity) :
-              ByteBuffer.allocate(capacity);
-      b = ((ByteBuffer) b).order(ByteOrder.nativeOrder());
+//      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
+//              ByteBuffer.allocateDirect(capacity) :
+//              ByteBuffer.allocate(capacity);
+      Buffer b =  ByteBuffer.allocateDirect(capacity);
+      b = ((ByteBuffer) b).order(BYTE_ORDER);
       return b;
    }
 
+   Buffer getSmallBuffer(int capacity) {
+      return allocateByteBuffer(capacity);
+   }
 
-   Buffer getBuffer(int capacity) {
+   Buffer getLargeBuffer(int capacity) {
       if (capacity < BUFFER_RECYCLE_SIZE_MIN) {
          return allocateByteBuffer(capacity);
       }
@@ -1295,8 +1309,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
       if (b != null) {
          // Ensure correct byte order in case recycled from other source
-         ((ByteBuffer)b).order(ByteOrder.nativeOrder());
-         b.clear();
+         ((ByteBuffer)b).order(BYTE_ORDER).clear();
+//         b.clear();
          return b;
       }
       return allocateByteBuffer(capacity);

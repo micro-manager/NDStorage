@@ -70,7 +70,7 @@ public class MultipageTiffReader {
     */
    public MultipageTiffReader(JSONObject summaryMD, int byteDepth, boolean rgb) {
       summaryMetadata_ = summaryMD;
-      byteOrder_ = MultipageTiffWriter.BYTE_ORDER;
+      byteOrder_ = MultiResMultipageTiffStorage.BYTE_ORDER;
       byteDepth_ = byteDepth;
       rgb_ = rgb;
    }
@@ -85,7 +85,7 @@ public class MultipageTiffReader {
    
    private MultipageTiffReader(String file) {
       file_ = new File(file);
-      byteOrder_ = MultipageTiffWriter.BYTE_ORDER;
+      byteOrder_ = MultiResMultipageTiffStorage.BYTE_ORDER;
       try {
          createFileChannel(file_);
       } catch (Exception ex) {

@@ -39,7 +39,7 @@ import mmcorej.org.json.JSONObject;
 
 public final class ResolutionLevel {
 
-   private ProgressBar savingFinishedProgressBar_;
+//   private ProgressBar savingFinishedProgressBar_;
    private JSONObject summaryMetadata_;
    private volatile boolean newDataSet_;
    private final String directory_;
@@ -260,18 +260,18 @@ public final class ResolutionLevel {
       }
 
       //Initialize progress bar on EDT
-      SwingUtilities.invokeLater(new Runnable() {
-         @Override
-         public void run() {
-            if (fileSet_ == null) {
-               //its already done
-               return;
-            }
-            savingFinishedProgressBar_ = new ProgressBar("Finishing Files", 0, 1);
-            savingFinishedProgressBar_.setProgress(0);
-            savingFinishedProgressBar_.setVisible(true);
-         }
-      });
+//      SwingUtilities.invokeLater(new Runnable() {
+//         @Override
+//         public void run() {
+//            if (fileSet_ == null) {
+//               //its already done
+//               return;
+//            }
+//            savingFinishedProgressBar_ = new ProgressBar("Finishing Files", 0, 1);
+//            savingFinishedProgressBar_.setProgress(0);
+//            savingFinishedProgressBar_.setVisible(true);
+//         }
+//      });
 
       int count = 0;
       try {
@@ -282,26 +282,26 @@ public final class ResolutionLevel {
       }
       count++;
       final int currentCount = count;
-      SwingUtilities.invokeLater(new Runnable() {
-         @Override
-         public void run() {
-            if (savingFinishedProgressBar_ == null) {
-               return;
-            }
-            savingFinishedProgressBar_.setProgress(currentCount);
-         }
-      });
+//      SwingUtilities.invokeLater(new Runnable() {
+//         @Override
+//         public void run() {
+//            if (savingFinishedProgressBar_ == null) {
+//               return;
+//            }
+//            savingFinishedProgressBar_.setProgress(currentCount);
+//         }
+//      });
 
-      SwingUtilities.invokeLater(new Runnable() {
-         @Override
-         public void run() {
-            if (savingFinishedProgressBar_ == null) {
-               return;
-            }
-            savingFinishedProgressBar_.close();
-            savingFinishedProgressBar_ = null;
-         }
-      });
+//      SwingUtilities.invokeLater(new Runnable() {
+//         @Override
+//         public void run() {
+//            if (savingFinishedProgressBar_ == null) {
+//               return;
+//            }
+//            savingFinishedProgressBar_.close();
+//            savingFinishedProgressBar_ = null;
+//         }
+//      });
 
       fileSet_ = null;
       finished_ = true;
@@ -537,13 +537,15 @@ public final class ResolutionLevel {
 
             //write image
             try {
-               if (masterMultiResStorage_.debugLogger_ != null) {
-                  masterMultiResStorage_.debugLogger_.accept("Writing image tczp: " + tIndex + "  " +
-                          cIndex + " " + zIndex + " " + posIndex);
-               }
+//               if (masterMultiResStorage_.debugLogger_ != null) {
+//                  masterMultiResStorage_.debugLogger_.accept("Writing image tczp: " + tIndex + "  " +
+//                          cIndex + " " + zIndex + " " + posIndex);
+//               }
+               long start = System.nanoTime();
                tiffWriters_.getLast().writeImage(img, tIndex, cIndex, zIndex, posIndex);
                if (masterMultiResStorage_.debugLogger_ != null) {
-                  masterMultiResStorage_.debugLogger_.accept("Finished writing image");
+//                  masterMultiResStorage_.debugLogger_.accept("Finished writing image");
+                  masterMultiResStorage_.debugLogger_.accept("write_image_time_" + (System.nanoTime() - start));
                }
             } catch (IOException e) {
                e.printStackTrace();
