@@ -24,60 +24,42 @@ package org.micromanager.multiresstorage;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.io.RandomAccessFile;
+import java.util.*;
 import java.util.concurrent.*;
 import javax.swing.*;
 
 import mmcorej.TaggedImage;
-import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
 public final class ResolutionLevel {
 
-   private ProgressBar savingFinishedProgressBar_;
+//   private ProgressBar savingFinishedProgressBar_;
    private JSONObject summaryMetadata_;
-   private boolean newDataSet_;
-   private String directory_;
-   private boolean separateMetadataFile_;
-   private boolean splitByXYPosition_ = false;
+   private volatile boolean newDataSet_;
+   private final String directory_;
    private volatile boolean finished_ = false;
-   private int lastAcquiredPosition_ = 0;
    private String summaryMetadataString_ = null;
-   private ExecutorService writingExecutor_;
-   private int maxSliceIndex_ = 0, maxFrameIndex_ = 0, maxChannelIndex_ = 0, minSliceIndex_ = 0;
-   // Images currently being written (need to keep around so that they can be
-   // returned upon request via getImage()). The data structure must be
-   // synchronized because the write completion is detected on a background
-   // thread.
+
+   //Map of image labels to file 
+   private ConcurrentHashMap<String, MultipageTiffReader> tiffReadersByLabel_;
+   private static boolean showProgressBars_ = true;
+   private final MultiResMultipageTiffStorage masterMultiResStorage_;
+   private FileSet fileSet_;
+   private String prefix_;
    private ConcurrentHashMap<String, TaggedImage> writePendingImages_
            = new ConcurrentHashMap<String, TaggedImage>();
-   //map of position indices to objects associated with each
-   private volatile HashMap<Integer, FileSet> fileSets_;
-   //Map of image labels to file 
-   private HashMap<String, MultipageTiffReader> tiffReadersByLabel_;
-   private static boolean showProgressBars_ = true;
-   private MultiResMultipageTiffStorage masterMultiResStorage_;
-   private  int imageWidth_, imageHeight_, byteDepth_;
-   private  boolean rgb_;
+   private IndexWriter indexWriter_;
+   private int firstImageWidth_, firstImageHeight_ = 0;
 
    public ResolutionLevel(String dir, boolean newDataSet, JSONObject summaryMetadata,
-                          ExecutorService writingExecutor, MultiResMultipageTiffStorage masterMultiRes,
-                          int imageWidth, int imageHeight, boolean rgb, int byteDepth) throws IOException {
+                           MultiResMultipageTiffStorage masterMultiRes, String prefix) throws IOException {
       masterMultiResStorage_ = masterMultiRes;
-      writingExecutor_ = writingExecutor;
-      separateMetadataFile_ = false;
-      splitByXYPosition_ = false;
+      prefix_ = prefix;
 
       newDataSet_ = newDataSet;
       directory_ = dir;
-      tiffReadersByLabel_ = new HashMap<String, MultipageTiffReader>();
+      tiffReadersByLabel_ = new ConcurrentHashMap<String, MultipageTiffReader>();
       setSummaryMetadata(summaryMetadata);
 
       if (!newDataSet_) {
@@ -87,145 +69,99 @@ public final class ResolutionLevel {
             JOptionPane.showMessageDialog(null, "Can't open dataset. Have you selected the top" +
                     " level folder of an NDTiffStorage dataset?");
          }
-      } else {
-         imageWidth_ = imageWidth;
-         imageHeight_ = imageHeight;
-         rgb_ = rgb;
-         byteDepth_ = byteDepth;
-      }
-
-   }
-
-   /**
-    * read summary metadata without reading index map
-    *
-    * @param dir
-    * @return
-    */
-   public static JSONObject readSummaryMD(String dir) throws IOException {
-      File directory = new File(dir);
-      for (File f : directory.listFiles()) {
-         if (f.getName().endsWith(".tif") || f.getName().endsWith(".TIF")) {
-            //this is where fixing dataset code occurs
-            return MultipageTiffReader.readSummaryMD(f.getAbsolutePath());
+      } else{
+         try {
+            indexWriter_ = new IndexWriter(directory_);
+         } catch (IOException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
          }
       }
-      throw new IOException("Couldn't find a vlid TIFF to read metadata from");
    }
 
-   public int getNumChannels() {
-      return maxChannelIndex_ + 1;
+   public void addToWritePendingImages(String identifier, TaggedImage ti) {
+      writePendingImages_.put(identifier, ti);
    }
 
-   private void openExistingDataSet() {
+   public void removePendingImage(String key) {
+      writePendingImages_.remove(key);
+   }
+
+
+   private void openExistingDataSet() throws IOException {
       //Need to throw error if file not found
       MultipageTiffReader reader = null;
       File dir = new File(directory_);
       if (dir.listFiles() == null) {
          throw new RuntimeException("No files found");
       }
-      int numFiles = dir.listFiles().length;
-
-      ProgressBar progressBar = null;
-      try {
-         progressBar = new ProgressBar("Reading " + directory_, 0, numFiles);
-      } catch (Exception e) {
-         //on a system that doesnt have support for graphics
-         showProgressBars_ = false;
-      }
-      int numRead = 0;
-      if (showProgressBars_) {
-         progressBar.setProgress(numRead);
-         progressBar.setVisible(true);
-      }
+      TreeMap<String, IndexEntryData> indexMap = null;
+      TreeMap<String, MultipageTiffReader> readersByFilename = new TreeMap<>();
       for (File f : dir.listFiles()) {
          if (f.getName().endsWith(".tif") || f.getName().endsWith(".TIF")) {
             try {
                //this is where fixing dataset code occurs
                reader = new MultipageTiffReader(f);
-               Set<String> labels = reader.getIndexKeys();
-               for (String label : labels) {
-                  tiffReadersByLabel_.put(label, reader);
-                  maxChannelIndex_ = Math.max(maxChannelIndex_, Integer.parseInt(label.split("_")[0]));
-                  maxSliceIndex_ = Math.max(maxSliceIndex_, Integer.parseInt(label.split("_")[1]));
-                  minSliceIndex_ = Math.min(minSliceIndex_, Integer.parseInt(label.split("_")[1]));
-                  maxFrameIndex_ = Math.max(maxFrameIndex_, Integer.parseInt(label.split("_")[2]));
-               }
-               if (reader.getDisplaySettings() != null) {
-                  masterMultiResStorage_.setDisplaySettings(reader.getDisplaySettings());
-               }
+               readersByFilename.put(f.getName(), reader);
             } catch (IOException ex) {
                ex.printStackTrace();
                throw new RuntimeException("Couldn't open file: " + f.toString());
             }
+         } else if (f.getName().endsWith("index")) {
+            indexMap = IndexEntryData.readIndexMap(f);
+            if (firstImageWidth_ == 0) {
+               firstImageWidth_ = (int) indexMap.values().iterator().next().pixWidth_;
+               firstImageHeight_ = (int) indexMap.values().iterator().next().pixHeight_;
+            }
          }
-         numRead++;
-         if (showProgressBars_) {
-            progressBar.setProgress(numRead);
-         }
       }
-      if (showProgressBars_) {
-         progressBar.setVisible(false);
+      //Map index keys to tiff readers
+      for (String indexKey : indexMap.keySet()) {
+         String filename = indexMap.get(indexKey).filename_;
+         tiffReadersByLabel_.put(indexKey, readersByFilename.get(filename));
+         tiffReadersByLabel_.get(indexKey).getIndexMap().put(indexKey, indexMap.get(indexKey));
       }
-
-      if (reader != null) {
-         setSummaryMetadata(reader.getSummaryMetadata(), true);
-      }
-      imageWidth_ = reader.getImageWidth();
-         imageHeight_ = reader.getImageHeight();
-         rgb_ = false;
-         byteDepth_ = reader.getByteDepth();
-      
-      if (showProgressBars_) {
-         progressBar.setProgress(1);
-         progressBar.setVisible(false);
-      }
+      summaryMetadata_ = tiffReadersByLabel_.values().iterator().next().getSummaryMetadata();
    }
 
-   public int getMaxFrameIndexOpenedDataset() {
-      return maxFrameIndex_;
+   public int getFirstImageWidth() {
+      return firstImageWidth_;
    }
 
-   public int getMaxSliceIndexOpenedDataset() {
-      return maxSliceIndex_;
+   public int getFirstImageHeight() {
+      return firstImageHeight_;
    }
 
-   public int getMinSliceIndexOpenedDataset() {
-      return minSliceIndex_;
-   }
+   public boolean hasImage(String indexKey) {
 
-   public boolean hasImage(int channelIndex, int sliceIndex, int frameIndex, int positionIndex) {
-      String label = channelIndex + "_" + sliceIndex + "_" + frameIndex + "_" + positionIndex;
-
-      TaggedImage image = writePendingImages_.get(label);
+      TaggedImage image = writePendingImages_.get(indexKey);
       if (image != null) {
          return true;
       }
 
-      MultipageTiffReader reader = tiffReadersByLabel_.get(label);
+      MultipageTiffReader reader = tiffReadersByLabel_.get(indexKey);
       if (reader != null) {
          return true;
       }
       return false;
    }
 
-   public TaggedImage getImage(int channelIndex, int sliceIndex, int frameIndex, int positionIndex) {
-      String label = channelIndex + "_" + sliceIndex + "_" + frameIndex + "_" + positionIndex;
+   public TaggedImage getImage(String indexKey) {
 
-      TaggedImage image = writePendingImages_.get(label);
+      TaggedImage image = writePendingImages_.get(indexKey);
       if (image != null) {
          return image;
       }
 
-      MultipageTiffReader reader = tiffReadersByLabel_.get(label);
+      MultipageTiffReader reader = tiffReadersByLabel_.get(indexKey);
       if (reader == null) {
          return null;
       }
-      return reader.readImage(label);
+      return reader.readImage(indexKey);
    }
 
-   public JSONObject getImageTags(int channelIndex, int sliceIndex, int frameIndex, int positionIndex) {
-      TaggedImage image = getImage(channelIndex, sliceIndex, frameIndex, positionIndex);
+   public JSONObject getImageTags(String indexKey) {
+      TaggedImage image = getImage(indexKey);
       if (image == null) {
          return null;
       }
@@ -236,71 +172,34 @@ public final class ResolutionLevel {
     * Method that allows overwrting of pixels but not MD or TIFF tags
     * so that low res stitched images can be written tile by tile
     */
-   public List<Future> overwritePixels(Object pix, int channel, int slice, int frame, int position) throws IOException {
-      //asumes only one position
-      int fileSetIndex = 0;
-      if (splitByXYPosition_) {
-         fileSetIndex = position;
+   public void overwritePixels(String indexKey, Object pixels, boolean rgb) throws IOException {
+      if (fileSet_ == null) {
+       //Its hasnt been written yet
+       getImage(indexKey);
+      } else {
+         fileSet_.overwritePixels(indexKey, pixels, rgb);
       }
-      return fileSets_.get(fileSetIndex).overwritePixels(pix, channel, slice, frame, position);
    }
 
-   public Future putImage(TaggedImage taggedImage, String prefix,
-           int tIndex, int cIndex, int zIndex, int posIndex) throws IOException {
-      // Now, we must hold on to TaggedImage, so that we can return it if
-      // somebody calls getImage() before the writing is finished.
-      // There is a data race if the TaggedImage is modified by other code, but
-      // that would be a bad thing to do anyway (will break the writer) and is
-      // considered forbidden.
-
-      String label = cIndex + "_" + zIndex + "_" + tIndex + "_" + posIndex;
-      maxChannelIndex_ = Math.max(maxChannelIndex_, Integer.parseInt(label.split("_")[0]));
-      writePendingImages_.put(label, taggedImage);
-      Future f = startWritingTask(label, prefix, taggedImage,
-              tIndex, cIndex, zIndex, posIndex);
-
-      writingExecutor_.submit(new Runnable() {
-         @Override
-         public void run() {
-            writePendingImages_.remove(label);
-         }
-      });
-      return f;
-   }
-
-   /*
-    * Sets up and kicks off the writing of a new image. This, in an indirect
-    * way, ends up submitting the writing task to writingExecutor_.
-    */
-   private Future startWritingTask(String label, String prefix, TaggedImage ti,
-           int tIndex, int cIndex, int zIndex, int posIndex)
-           throws IOException {
+   public void putImage(String indexKey, Object pixels, byte[] metadata,
+                                  boolean rgb, int imageHeight, int imageWidth) throws IOException {
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
       }
 
-      int fileSetIndex = 0;
-      if (splitByXYPosition_) {
-         fileSetIndex = posIndex;
-      }
-      if (fileSets_ == null) {
+      if (fileSet_ == null) {
          try {
-            fileSets_ = new HashMap<Integer, FileSet>();
             MultiResMultipageTiffStorage.createDir(directory_);
+            fileSet_ = new FileSet(prefix_);
          } catch (Exception ex) {
             throw new RuntimeException(ex);
          }
       }
-
-      if (fileSets_.get(fileSetIndex) == null) {
-         fileSets_.put(fileSetIndex, new FileSet(prefix, posIndex, this));
-      }
-      FileSet set = fileSets_.get(fileSetIndex);
       try {
-         Future f = set.writeImage(ti, tIndex,
-                 cIndex, zIndex, posIndex);
-         tiffReadersByLabel_.put(label, set.getCurrentReader());
-         return f;
+         IndexEntryData ied = fileSet_.writeImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
+         tiffReadersByLabel_.put(indexKey, fileSet_.getCurrentReader());
+         indexWriter_.addEntry(ied);
+         removePendingImage(indexKey);
       } catch (IOException ex) {
          throw new RuntimeException("problem writing image to file");
       }
@@ -315,64 +214,26 @@ public final class ResolutionLevel {
     * metadata file and closes it. After calling this function, the imagestorage
     * is read-only
     */
-   public synchronized void finished() {
+   public void finished() {
       if (finished_) {
          return;
       }
       newDataSet_ = false;
-      if (fileSets_ == null) {
+      if (fileSet_ == null) {
          // Nothing to be done.
          finished_ = true;
          return;
       }
 
-      //Initialize progress bar on EDT
-      SwingUtilities.invokeLater(new Runnable() {
-         @Override
-         public void run() {
-            if (fileSets_ == null) {
-               //its already done
-               return;
-            }
-            savingFinishedProgressBar_ = new ProgressBar("Finishing Files", 0, fileSets_.size());
-            savingFinishedProgressBar_.setProgress(0);
-            savingFinishedProgressBar_.setVisible(true);
-         }
-      });
-
-      int count = 0;
-      for (FileSet p : fileSets_.values()) {
-         try {
-            p.finished();
-         } catch (Exception ex) {
-            ex.printStackTrace();
-            throw new RuntimeException(ex);
-         }
-         count++;
-         final int currentCount = count;
-         SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-               if (savingFinishedProgressBar_ == null) {
-                  return;
-               }
-               savingFinishedProgressBar_.setProgress(currentCount);
-            }
-         });
+      try {
+         fileSet_.finished();
+      } catch (Exception ex) {
+         ex.printStackTrace();
+         throw new RuntimeException(ex);
       }
-      fileSets_.clear();
-      SwingUtilities.invokeLater(new Runnable() {
-         @Override
-         public void run() {
-            if (savingFinishedProgressBar_ == null) {
-               return;
-            }
-            savingFinishedProgressBar_.close();
-            savingFinishedProgressBar_ = null;
-            fileSets_ = null;
-         }
-      });
 
+      indexWriter_.finishedWriting();
+      fileSet_ = null;
       finished_ = true;
    }
 
@@ -395,36 +256,7 @@ public final class ResolutionLevel {
    }
 
    public void setSummaryMetadata(JSONObject md) {
-      setSummaryMetadata(md, false);
-   }
-
-   private void setSummaryMetadata(JSONObject md, boolean showProgress) {
       summaryMetadata_ = md;
-      summaryMetadataString_ = null;
-      if (summaryMetadata_ != null) {
-         summaryMetadataString_ = md.toString();
-         HashMap<String, MultipageTiffReader> oldImageMap = tiffReadersByLabel_;
-         tiffReadersByLabel_ = new HashMap<String, MultipageTiffReader>();
-         if (showProgress && showProgressBars_) {
-            ProgressBar progressBar = new ProgressBar("Building image location map", 0, oldImageMap.keySet().size());
-            progressBar.setProgress(0);
-            progressBar.setVisible(true);
-            int i = 1;
-            for (String label : oldImageMap.keySet()) {
-               tiffReadersByLabel_.put(label, oldImageMap.get(label));
-               progressBar.setProgress(i);
-               i++;
-            }
-            progressBar.setVisible(false);
-         } else {
-            tiffReadersByLabel_.putAll(oldImageMap);
-         }
-
-      }
-   }
-
-   public String getSummaryMetadataString() {
-      return summaryMetadataString_;
    }
 
    public JSONObject getSummaryMetadata() {
@@ -454,38 +286,7 @@ public final class ResolutionLevel {
       return size;
    }
 
-   public boolean hasExpectedImageOrder() {
-      return false;
-//      return expectedImageOrder_;
-   }
-
-   public JSONObject getDisplaySettings() {
-      return masterMultiResStorage_.getDisplaySettings();
-   }
-
-   void setDisplaySettings() {
-      if (fileSets_ == null) {
-         //it never wrote anything
-         return;
-      }
-      FileSet fs = fileSets_.get(0);
-      fs.putDisplaySettings();
-   }
-
-   int getByteDepth() {
-      return byteDepth_;
-   }
-
-   int getWidth() {
-      return imageWidth_;
-   }
-
-   int getHeight() {
-      return imageHeight_;
-   }
-
    //Class encapsulating a single File (or series of files)
-   //Default is one file series per xy posititon
    private class FileSet {
 
       private LinkedList<MultipageTiffWriter> tiffWriters_;
@@ -495,32 +296,20 @@ public final class ResolutionLevel {
       private String currentTiffUUID_;
       ;
       private String metadataFileFullPath_;
-      private boolean finished_ = false;
-      private ResolutionLevel mpTiff_;
+      private volatile boolean finished_ = false;
       int nextExpectedChannel_ = 0, nextExpectedSlice_ = 0, nextExpectedFrame_ = 0;
       int currentFrame_ = 0;
 
-      public FileSet(String prefix, int positionIndex, ResolutionLevel mpt) throws IOException {
+      public FileSet(String prefix) throws IOException {
          tiffWriters_ = new LinkedList<MultipageTiffWriter>();
-         mpTiff_ = mpt;
 
          //get file path and name
-         baseFilename_ = createBaseFilename(prefix, positionIndex);
+         baseFilename_ = createBaseFilename(prefix);
          currentTiffFilename_ = baseFilename_ + ".tif";
          currentTiffUUID_ = "urn:uuid:" + UUID.randomUUID().toString();
          //make first writer
          tiffWriters_.add(new MultipageTiffWriter(directory_, currentTiffFilename_,
-                 summaryMetadata_, mpt, splitByXYPosition_, writingExecutor_,
-                 imageWidth_, imageHeight_, rgb_, byteDepth_
-         ));
-
-         try {
-            if (separateMetadataFile_) {
-               startMetadataFile();
-            }
-         } catch (JSONException ex) {
-            throw new RuntimeException("Problem with summary metadata");
-         }
+                 summaryMetadata_, masterMultiResStorage_));
       }
 //
 //      public String getCurrentUUID() {
@@ -532,132 +321,102 @@ public final class ResolutionLevel {
       }
 
       public void finished() throws IOException, ExecutionException, InterruptedException {
-         if (finished_) {
-            return;
-         }
-
-         if (separateMetadataFile_) {
             try {
-               finishMetadataFile();
-            } catch (JSONException ex) {
-               throw new RuntimeException("Problem finishing metadata.txt");
-            }
-         }
+               if (finished_) {
+                  return;
+               }
 
-         //only need to finish last one here because previous ones in set are finished as they fill up with images
-         Future f = tiffWriters_.getLast().finishedWriting();
-         //close all
-         for (MultipageTiffWriter w : tiffWriters_) {
-            w.close();
-         }
-         tiffWriters_ = null;
-         finished_ = true;
+               //only need to finish last one here because previous ones in set are finished as they fill up with images
+               tiffWriters_.getLast().finishedWriting();
+               //close all
+               for (MultipageTiffWriter w : tiffWriters_) {
+                  w.close();
+               }
+               tiffWriters_ = null;
+               finished_ = true;
+            } catch (Exception e) {
+               e.printStackTrace();
+               throw new RuntimeException(e);
+            }
       }
 
       public MultipageTiffReader getCurrentReader() {
          return tiffWriters_.getLast().getReader();
       }
 
-      public List<Future> overwritePixels(Object pixels, int channel, int slice, int frame, int position) throws IOException {
+      public void overwritePixels(String identifier, Object pixels, boolean rgb) throws IOException {
          ArrayList<Future> list = new ArrayList<Future>();
          for (MultipageTiffWriter w : tiffWriters_) {
-            if (w.getIndexMap().containsKey(StorageMD.generateLabel(channel, slice, frame, position))) {
-               list.add(w.overwritePixels(pixels, channel, slice, frame, position));
+            if (w.getIndexMap().containsKey(identifier)) {
+               w.overwritePixels(identifier, pixels, rgb);
             }
          }
-         return list;
       }
 
-      public Future writeImage(TaggedImage img, int tIndex,
-              int cIndex, int zIndex, int posIndex) throws IOException {
-         //check if current writer is out of space, if so, make a new one
-         if (!tiffWriters_.getLast().hasSpaceToWrite(img)) {
+      public IndexEntryData writeImage(String indexKey, Object pixels, byte[] metadata,
+                                       boolean rgb, int imageHeight, int imageWidth) throws IOException {
+            //check if current writer is out of space, if so, make a new one
+            if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata)) {
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Creating new tiff file");
+               }
+               try {
+                  //write index map here but still need to call close() at end of acq
+                  tiffWriters_.getLast().finishedWriting();
+                  if (masterMultiResStorage_.debugLogger_ != null) {
+                     masterMultiResStorage_.debugLogger_.accept("finished existing file");
+                  }
+               } catch (Exception ex) {
+                  throw new RuntimeException(ex);
+               }
+
+               currentTiffFilename_ = baseFilename_ + "_" + tiffWriters_.size() + ".tif";
+               currentTiffUUID_ = "urn:uuid:" + UUID.randomUUID().toString();
+               try {
+                  tiffWriters_.add(new MultipageTiffWriter(directory_, currentTiffFilename_,
+                          summaryMetadata_, masterMultiResStorage_));
+                  if (masterMultiResStorage_.debugLogger_ != null) {
+                     masterMultiResStorage_.debugLogger_.accept("Constructed new file");
+                  }
+               } catch (IOException e) {
+                  e.printStackTrace();
+                  throw new RuntimeException(e);
+               }
+            }
+
+
+            //write image
             try {
-               //write index map here but still need to call close() at end of acq
-               tiffWriters_.getLast().finishedWriting();
-            } catch (Exception ex) {
-               throw new RuntimeException(ex);
+//               if (masterMultiResStorage_.debugLogger_ != null) {
+//                  masterMultiResStorage_.debugLogger_.accept("Writing image tczp: " + tIndex + "  " +
+//                          cIndex + " " + zIndex + " " + posIndex);
+//               }
+               long start = System.nanoTime();
+               IndexEntryData indexMetedata = tiffWriters_.getLast().writeImage(indexKey, pixels, metadata,
+                                  rgb, imageHeight, imageWidth);
+               if (masterMultiResStorage_.debugLogger_ != null) {
+//                  masterMultiResStorage_.debugLogger_.accept("Finished writing image");
+                  masterMultiResStorage_.debugLogger_.accept("write_image_time_" + (System.nanoTime() - start));
+               }
+               return indexMetedata;
+            } catch (IOException e) {
+               e.printStackTrace();
+               throw new RuntimeException(e);
             }
-
-            currentTiffFilename_ = baseFilename_ + "_" + tiffWriters_.size() + ".tif";
-            currentTiffUUID_ = "urn:uuid:" + UUID.randomUUID().toString();
-            tiffWriters_.add(new MultipageTiffWriter(directory_, currentTiffFilename_,
-                    summaryMetadata_, mpTiff_, splitByXYPosition_, writingExecutor_,
-                    imageWidth_, imageHeight_, rgb_, byteDepth_
-            ));
-         }
-
-         //Add filename to image tags
-         try {
-            img.tags.put("FileName", currentTiffFilename_);
-         } catch (JSONException ex) {
-            throw new RuntimeException("Error adding filename to metadata");
-         }
-
-         //write image
-         Future f = tiffWriters_.getLast().writeImage(img,
-                 tIndex, cIndex, zIndex, posIndex);
-
-         lastAcquiredPosition_ = Math.max(posIndex, lastAcquiredPosition_);
-
-         try {
-            if (separateMetadataFile_) {
-               writeToMetadataFile(img.tags);
-            }
-         } catch (JSONException ex) {
-            throw new RuntimeException("Problem with image metadata");
-         }
-         return f;
       }
 
-      private void writeToMetadataFile(JSONObject md) throws JSONException {
-//         try {
-//            mdWriter_.write(",\n\"FrameKey-" + MultiresMetadata.getFrameIndex(md)
-//                    + "-" + MultiresMetadata.getChannelIndex(md) + "-" + MultiresMetadata.getSliceIndex(md) + "\": ");
-//            mdWriter_.write(md.toString(2));
-//         } catch (IOException ex) {
-//            throw new RuntimeException("Problem writing to metadata.txt file");
-//         }
-      }
 
-      private void startMetadataFile() throws JSONException {
-         metadataFileFullPath_ = directory_ + "/" + baseFilename_ + "_metadata.txt";
-         try {
-            mdWriter_ = new FileWriter(metadataFileFullPath_);
-            mdWriter_.write("{" + "\n");
-            mdWriter_.write("\"Summary\": ");
-            mdWriter_.write(summaryMetadata_.toString(2));
-         } catch (IOException ex) {
-            throw new RuntimeException("Problem creating metadata.txt file");
-         }
-      }
-
-      private void finishMetadataFile() throws JSONException {
-         try {
-            mdWriter_.write("\n}\n");
-            mdWriter_.close();
-         } catch (IOException ex) {
-            throw new RuntimeException("Problem creating metadata.txt file");
-         }
-      }
-
-      private String createBaseFilename(String prefix, int positionIndex) {
+      private String createBaseFilename(String prefix) {
          String baseFilename;
          if (prefix.length() == 0) {
-            baseFilename = "MagellanStack";
+            baseFilename = "NDTiffStack";
          } else {
-            baseFilename = prefix + "_MagellanStack";
+            baseFilename = prefix + "_NDTiffStack";
          }
 
-         if (splitByXYPosition_) {
-            baseFilename += "_Pos" + positionIndex;
-         }
          return baseFilename;
       }
 
-      private void putDisplaySettings() {
-         tiffWriters_.getLast().setDisplayStorer();
-      }
    }
 
    class ImageLabelComparator implements Comparator<String> {

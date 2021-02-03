@@ -10,6 +10,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Future;
+
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONObject;
 
@@ -26,8 +28,11 @@ public interface StorageAPI {
     *
     * @param taggedImg
     * @param axes
+    * @param rgb is it RGB
+    * @param imageHeight
+    * @param imageWidth
     */
-   public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes);
+   public Future putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, boolean rgb, int imageHeight, int imageWidth);
 
    /**
     * Is this dataset finished writing and now read only?
@@ -89,6 +94,15 @@ public interface StorageAPI {
     * @return 
     */
    public TaggedImage getImage(HashMap<String, Integer> axes);
+
+   /**
+    * Check if dataset has an image with the specified axes
+    *
+    * @param axes HashMap mapping axis names to positions
+    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @return
+    */
+   public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
 
    /**
     * Get a set containing all image axes in this dataset

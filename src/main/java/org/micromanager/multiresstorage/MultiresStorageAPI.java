@@ -5,6 +5,7 @@ import mmcorej.TaggedImage;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.Future;
 
 /**
  * API of storage that includes multi-resolution support, in addition to the base features
@@ -27,42 +28,22 @@ public interface MultiresStorageAPI extends StorageAPI{
 
    /**
     * Add an image into storage, which corresponds to a particular row/column in
-    * a larger stitched image
-    *
-    * @param taggedImg
+    * a larger stitched image. Must have entries for "row" and "column" in axes
+    * @param ti
     * @param axes
-    * @param row
-    * @param col
+    * @param rgb
+    * @param imageHeight
+    * @param imageWidth
+    * @return
     */
-   public void putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, int row, int col);
+   public Future putImageMultiRes(TaggedImage ti, HashMap<String, Integer> axes,
+                           boolean rgb, int imageHeight, int imageWidth);
 
    /**
     * return number of resolutions of the multiresolution pyramid
     * @return
     */
    public int getNumResLevels();
-
-   /**
-    * Get a single tile of a multiresolution stitched dataset. This is called from Python code
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @param row row index of tile in the requested resolution
-    * @param col column index of tile in the requested resolution
-    * @return
-    */
-   public TaggedImage getTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
-
-   /**
-    * Check for a  tile of a multiresolution stitched dataset. This is called from Python code
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @param row row index of tile in the requested resolution
-    * @param col column index of tile in the requested resolution
-    * @return
-    */
-   public boolean hasTileByRowCol(HashMap<String, Integer> axes, int resIndex, int row, int col);
 
    /**
     * Get a single stitched image that spans multiple tiles
@@ -75,19 +56,10 @@ public interface MultiresStorageAPI extends StorageAPI{
     * @param imageHeight height of the returned image
     * @return
     */
-   public TaggedImage getStitchedImage(HashMap<String, Integer> axes,
-                                       int resIndex,
-                                       int xOffset, int yOffset,
-                                       int imageWidth, int imageHeight);
-
-   /**
-    * Check if dataset has an image with the specified axes
-    *
-    * @param axes HashMap mapping axis names to positions
-    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
-    * @return
-    */
-   public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
+   public TaggedImage getDisplayImage(HashMap<String, Integer> axes,
+                                      int resIndex,
+                                      int xOffset, int yOffset,
+                                      int imageWidth, int imageHeight);
 
 
    /**
