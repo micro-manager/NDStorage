@@ -17,26 +17,15 @@ import mmcorej.org.json.JSONObject;
 class StorageMD {
 
    private static final String CHANNEL_NAME = "Channel";
-   private static final String SUPER_CHANNEL_NAME = "StorageSuperChannelName";
-   private static final String AXES = "ImageStorageAxesPositions";
+   private static final String AXES = "Axes";
    private static final String GRID_COL = "GridColumnIndex";
    private static final String GRID_ROW = "GridRowIndex";
    private static final String OVERLAP_X = "GridPixelOverlapX";
    private static final String OVERLAP_Y = "GridPixelOverlapY";
+   private static final String FULL_RES_TILE_HEIGHT = "FullResTileHeight";
+   private static final String FULL_RES_TILE_WIDTH = "FullResTileWidth";
    private static final String TILED_STORAGE = "TiledImageStorage";
 
-   static String generateLabel(int channel, int slice, int frame, int position) {
-      return channel + "_" + slice + "_" + frame + "_" + position;
-   }
-
-   public static int[] getIndices(String imageLabel) {
-      int[] ind = new int[4];
-      String[] s = imageLabel.split("_");
-      for (int i = 0; i < 4; i++) {
-         ind[i] = Integer.parseInt(s[i]);
-      }
-      return ind;
-   }
 
    static void setGridRow(JSONObject smd, long gridRow) {
       try {
@@ -82,22 +71,6 @@ class StorageMD {
       }
    }
 
-   public static String getSuperChannelName(JSONObject map) {
-      try {
-         return map.getString(SUPER_CHANNEL_NAME);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Missing channel index tag");
-      }
-   }
-
-   public static void setSuperChannelName(JSONObject map, String channelName) {
-      try {
-         map.put(SUPER_CHANNEL_NAME, channelName);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Couldn't set channel index");
-      }
-   }
-
    static HashMap<String, Integer> getAxes(JSONObject tags) {
       try {
          JSONObject axes = tags.getJSONObject(AXES);
@@ -108,22 +81,6 @@ class StorageMD {
             axesMap.put(key, axes.getInt(key));
          }
          return axesMap;
-      } catch (JSONException ex) {
-         throw new RuntimeException("couldnt create axes");
-      }
-   }
-
-   public static void createAxes(JSONObject tags) {
-      try {
-         tags.put(AXES, new JSONObject());
-      } catch (JSONException ex) {
-         throw new RuntimeException("couldnt create axes");
-      }
-   }
-
-   public static void setAxisPosition(JSONObject tags, String axis, int position) {
-      try {
-         tags.getJSONObject(AXES).put(axis, position);
       } catch (JSONException ex) {
          throw new RuntimeException("couldnt create axes");
       }
@@ -179,4 +136,35 @@ class StorageMD {
       }
    }
 
+   public static void setFullResTileWidth(JSONObject summaryMD_, int fullResTileWidthIncludingOverlap_) {
+      try {
+         summaryMD_.put(FULL_RES_TILE_WIDTH, fullResTileWidthIncludingOverlap_);
+      } catch (JSONException ex) {
+         throw new RuntimeException(ex);
+      }
+   }
+
+   public static void setFullResTileHeight(JSONObject summaryMD_, int fullResTileHeightIncludingOverlap_) {
+      try {
+         summaryMD_.put(FULL_RES_TILE_HEIGHT, fullResTileHeightIncludingOverlap_);
+      } catch (JSONException ex) {
+         throw new RuntimeException(ex);
+      }
+   }
+
+   public static int getFullResTileWidth(JSONObject summaryMD) {
+      try {
+         return summaryMD.getInt(FULL_RES_TILE_WIDTH);
+      } catch (JSONException ex) {
+         throw new RuntimeException(ex);
+      }
+   }
+
+   public static int getFullResTileHeight(JSONObject summaryMD) {
+      try {
+         return summaryMD.getInt(FULL_RES_TILE_HEIGHT);
+      } catch (JSONException ex) {
+         throw new RuntimeException(ex);
+      }
+   }
 }

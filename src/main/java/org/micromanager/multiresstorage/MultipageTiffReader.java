@@ -57,54 +57,16 @@ public class MultipageTiffReader {
    private FileChannel fileChannel_;
       
    private JSONObject summaryMetadata_;
-   private boolean rgb_;
-   
-   private JSONObject displaySettings_;
-   
-   private ConcurrentHashMap<String,Long> indexMap_;
-   
-   private int imageWidth_, imageHeight_, byteDepth_;
-   
+   private ConcurrentHashMap<String,IndexEntryData> indexMap_;
+
    /**
     * This constructor is used for a file that is currently being written
     */
-   public MultipageTiffReader(JSONObject summaryMD, int byteDepth, boolean rgb) {
+   public MultipageTiffReader(JSONObject summaryMD) {
       summaryMetadata_ = summaryMD;
       byteOrder_ = MultiResMultipageTiffStorage.BYTE_ORDER;
-      byteDepth_ = byteDepth;
-      rgb_ = rgb;
    }
-   
-   public void setIndexMap(ConcurrentHashMap<String,Long> indexMap) {
-      indexMap_ = indexMap;
-   }
-   
-   public void setFileChannel(FileChannel fc) {
-      fileChannel_ = fc;
-   }
-   
-   private MultipageTiffReader(String file) {
-      file_ = new File(file);
-      byteOrder_ = MultiResMultipageTiffStorage.BYTE_ORDER;
-      try {
-         createFileChannel(file_);
-      } catch (Exception ex) {
-         throw new RuntimeException("Can't successfully open file: " + file_.getName());
-      }
-      
-   }
-   
-   /**
-    * read summary metadata without opening whole dataset
-    * @return 
-    */
-   public static JSONObject readSummaryMD(String file) throws IOException {
-      MultipageTiffReader reader = new MultipageTiffReader(file);
-      JSONObject smd = reader.readSummaryMD();
-      reader.close();
-      return smd;
-   }
-  
+
    /**
     * This constructor is used for opening datasets that have already been saved
     */
@@ -116,41 +78,25 @@ public class MultipageTiffReader {
          throw new RuntimeException("Can't successfully open file: " +  file_.getName());
       }
       long firstIFD = readHeader();
+      indexMap_ = new ConcurrentHashMap<>();
       summaryMetadata_ = readSummaryMD();
-      try {
-         readIndexMap();
-      } catch (Exception e) {
-         throw new RuntimeException(e);
-      }
-      
-      //read first IFD to get some info about the image
-      String firstLabel = indexMap_.keys().nextElement();
-        long byteOffset = indexMap_.get(firstLabel);
-          
-            IFDData data = readIFD(byteOffset);
-            imageWidth_ = (int) data.width;
-            imageHeight_ = (int) data.height;
-            byteDepth_ = (int) (data.bytesPerImage / (imageHeight_ * imageWidth_));
-      
-         displaySettings_ = readDisplaySettings();
-
 //      if (summaryMetadata_ != null) {
 //         getRGBAndByteDepth(summaryMetadata_);
 //      }
    }
-   
-    int getImageWidth() {
-      return imageWidth_;
+
+   public void setIndexMap(ConcurrentHashMap<String,IndexEntryData> indexMap) {
+      indexMap_ = indexMap;
    }
 
-   int getImageHeight() {
-      return imageHeight_;
-   }
-
-   int getByteDepth() {
-      return byteDepth_;
+   public ConcurrentHashMap<String,IndexEntryData> getIndexMap() {
+      return indexMap_;
    }
    
+   public void setFileChannel(FileChannel fc) {
+      fileChannel_ = fc;
+   }
+
    
    public static boolean isMMMultipageTiff(String directory) throws IOException {
       File dir = new File(directory);
@@ -220,20 +166,13 @@ public class MultipageTiffReader {
       return summaryMetadata_;
    }
    
-   public JSONObject getDisplaySettings() {
-      return displaySettings_;
-   }
-   
    public TaggedImage readImage(String label) {
       if (indexMap_.containsKey(label)) {
          if (fileChannel_ == null) {
             throw new RuntimeException("Attempted to read image on FileChannel that is null"); //can happen on acquiition abort
          }
          try {
-            long byteOffset = indexMap_.get(label);
-            
-            IFDData data = readIFD(byteOffset);
-            return readTaggedImage(data);
+            return readTaggedImage(indexMap_.get(label));
          } catch (IOException ex) {
             throw new RuntimeException(ex);
          }
@@ -253,7 +192,7 @@ public class MultipageTiffReader {
    private JSONObject readSummaryMD() {
       try {
          ByteBuffer mdInfo = ByteBuffer.allocate(8).order(byteOrder_);
-         fileChannel_.read(mdInfo, 32);
+         fileChannel_.read(mdInfo, 16);
          int header = mdInfo.getInt(0);
          int length = mdInfo.getInt(4);
          
@@ -262,28 +201,12 @@ public class MultipageTiffReader {
          }
 
          ByteBuffer mdBuffer = ByteBuffer.allocate(length).order(byteOrder_);
-         fileChannel_.read(mdBuffer, 40);
+         fileChannel_.read(mdBuffer, 24);
          JSONObject summaryMD = new JSONObject(getString(mdBuffer));
 
          return summaryMD;
       } catch (Exception ex) {
          throw new RuntimeException("Couldn't read summary Metadata from file: " + file_.getName());
-      }
-   }
-
-   private JSONObject readDisplaySettings() {
-      try {
-         long offset = readOffsetHeaderAndOffset(MultipageTiffWriter.DISPLAY_SETTINGS_OFFSET_HEADER,16);
-          ByteBuffer header = readIntoBuffer(offset, 8);
-          if (header.getInt(0) != MultipageTiffWriter.DISPLAY_SETTINGS_HEADER) {
-             System.err.println("Can't find display settings in file: " + file_.getName());
-             return null;
-          }
-          ByteBuffer buffer = readIntoBuffer(offset + 8, header.getInt(4));
-         return new JSONObject(getString(buffer));
-      } catch (Exception ex) {
-         //Ignore since display settings will only be in one file
-         return null;
       }
    }
    
@@ -300,30 +223,6 @@ public class MultipageTiffReader {
          throw new IOException("Offset header incorrect, expected: " + offsetHeaderVal +"   found: " + offsetHeader);
       }
       return unsignInt(buffer1.getInt(4));     
-   }
-
-   private void readIndexMap() throws IOException {
-      long offset = readOffsetHeaderAndOffset(MultipageTiffWriter.INDEX_MAP_OFFSET_HEADER, 8);
-      ByteBuffer header = readIntoBuffer(offset, 8);
-      if (header.getInt(0) != MultipageTiffWriter.INDEX_MAP_HEADER) {
-         throw new RuntimeException("Error reading index map header");
-      }
-      int numMappings = header.getInt(4);
-      indexMap_ = new ConcurrentHashMap<String, Long>();
-      ByteBuffer mapBuffer = readIntoBuffer(offset+8, 20*numMappings);     
-      for (int i = 0; i < numMappings; i++) {
-         int channel = mapBuffer.getInt(i*20);
-         int slice = mapBuffer.getInt(i*20+4);
-         int frame = mapBuffer.getInt(i*20+8);
-         int position = mapBuffer.getInt(i*20+12);
-         long imageOffset = unsignInt(mapBuffer.getInt(i*20+16));
-         if (imageOffset == 0) {
-            break; // end of index map reached
-         }
-         //If a duplicate label is read, forget about the previous one
-         //if data has been intentionally overwritten, this gives the most current version
-         indexMap_.put(channel + "_" + slice + "_" + frame + "_" + position, imageOffset);
-      }
    }
 
    private IFDData readIFD(long byteOffset) throws IOException {
@@ -360,11 +259,14 @@ public class MultipageTiffReader {
       }
    }
    
-   private TaggedImage readTaggedImage(IFDData data) throws IOException {
-      ByteBuffer pixelBuffer = ByteBuffer.allocate( (int) data.bytesPerImage).order(byteOrder_);
-      ByteBuffer mdBuffer = ByteBuffer.allocate((int) data.mdLength).order(byteOrder_);
-      fileChannel_.read(pixelBuffer, data.pixelOffset);
-      fileChannel_.read(mdBuffer, data.mdOffset);
+   private TaggedImage readTaggedImage(IndexEntryData data) throws IOException {
+      int numBytes = (int) (data.pixWidth_ * data.pixHeight_ *
+                    (data.pixelType_ == IndexEntryData.SIXTEEN_BIT ? 2 :
+                            (data.pixelType_ == IndexEntryData.EIGHT_BIT ? 1 : 3)));
+      ByteBuffer pixelBuffer = ByteBuffer.allocate(numBytes).order(byteOrder_);
+      ByteBuffer mdBuffer = ByteBuffer.allocate((int) data.mdLength_).order(byteOrder_);
+      fileChannel_.read(pixelBuffer, data.pixOffset_);
+      fileChannel_.read(mdBuffer, data.mdOffset_);
       JSONObject md = new JSONObject();
       try {
          md = new JSONObject(getString(mdBuffer));
@@ -375,9 +277,9 @@ public class MultipageTiffReader {
 //         getRGBAndByteDepth(md);
 //      }
       
-      if (rgb_) {
-         if (byteDepth_ == 1) {
-            byte[] pixels = new byte[(int) (4 * data.bytesPerImage / 3)];
+      if (data.isRGB()) {
+         if (data.getByteDepth() == 1) {
+            byte[] pixels = new byte[numBytes];
             int i = 0;
             for (byte b : pixelBuffer.array()) {
                if (i % 4 == 0) {
@@ -387,23 +289,25 @@ public class MultipageTiffReader {
                i++;
             }
             return new TaggedImage(pixels, md);
-         } else {
-            short[] pixels = new short[(int) (2 * (data.bytesPerImage/3))];
-            int i = 0;           
-            while ( i < pixels.length) {                
-               pixels[i] = pixelBuffer.getShort( 2*((i/4)*3 + (i%4)) );        
-               i++;
-               if ((i + 1) % 4 == 0) {
-                  pixels[i] = 0;
-                  i++;
-               }
-            }
-            return new TaggedImage(pixels, md);
          }
+         throw new RuntimeException("Only rgb32 supported");
+//         else {
+//            short[] pixels = new short[(int) (2 * (data.pixLength_/3))];
+//            int i = 0;
+//            while ( i < pixels.length) {
+//               pixels[i] = pixelBuffer.getShort( 2*((i/4)*3 + (i%4)) );
+//               i++;
+//               if ((i + 1) % 4 == 0) {
+//                  pixels[i] = 0;
+//                  i++;
+//               }
+//            }
+//            return new TaggedImage(pixels, md);
+//         }
       } else {
-         if (byteDepth_ == 1) {
+         if (data.getByteDepth() == 1) {
             return new TaggedImage(pixelBuffer.array(), md);
-         } else if (byteDepth_ == 2) {
+         } else if (data.getByteDepth() == 2) {
             short[] pix = new short[pixelBuffer.capacity()/2];
             for (int i = 0; i < pix.length; i++ ) {
                pix[i] = pixelBuffer.getShort(i*2);
