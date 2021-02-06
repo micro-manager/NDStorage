@@ -184,7 +184,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 //      });
 
       writingTaskQueue_ = new LinkedBlockingQueue<Runnable>(savingQueueSize);
-      writingExecutor_ = new ThreadPoolExecutor(1,1,1,TimeUnit.MILLISECONDS, writingTaskQueue_);
+      writingExecutor_ = new ThreadPoolExecutor(1,
+              1,1,TimeUnit.MILLISECONDS, writingTaskQueue_);
 
       try {
          //make a copy in case tag changes are needed later
@@ -498,13 +499,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          }
          int oldLevel = maxResolutionLevel_;
          maxResolutionLevel_ = index;
-         //update position manager to reflect addition of new resolution level
-         ArrayList<Future> finished = new ArrayList<Future>();
          for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
             populateNewResolutionLevel(i);
-            for (Future f : finished) {
-               f.get();
-            }
          }
    }
 
@@ -733,13 +729,19 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     */
    public Future putImage(TaggedImage ti, HashMap<String, Integer> axessss,
                         boolean rgb, int imageHeight, int imageWidth) {
+//      try {
+//         Thread.sleep(20);
+//      } catch (Exception e) {
+//
+//      }
+
       rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
       if (debugLogger_ != null) {
          debugLogger_.accept(
-//                 "Adding image " + getAxesString(axessss) +
-                 "writing_queue_size= " + writingTaskQueue_.size());
+                 "Adding image " + getAxesString(axessss) +
+                 "\nwriting_queue_size= " + writingTaskQueue_.size());
       }
       while (writingTaskQueue_.size() > writingQueueMaxSize_) {
          try {
@@ -790,6 +792,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     *
     * @return
     */
+   @Override
    public Future putImageMultiRes( TaggedImage ti, final HashMap<String, Integer> axes,
                                   boolean rgb, int imageHeight, int imageWidth) {
       rgb_ = rgb;
@@ -799,7 +802,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       byte[] metadata = ti.tags.toString().getBytes();
       String indexKey = IndexEntryData.serializeAxes(StorageMD.getAxes(ti.tags));
       fullResStorage_.addToWritePendingImages(indexKey, ti);
-
       return writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
@@ -821,10 +823,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                   int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
                           (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
                                   / 4)) / Math.log(2));
-
                   int row = axes.get(ROW_AXIS);
                   int col = axes.get(COL_AXIS);
-
                   addResolutionsUpTo(maxResIndex);
                   addToLowResStorage(ti, axes, 0, row, col, rgb );
                }
@@ -1012,7 +1012,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       });
       for (HashMap<String, Integer> s : imageAxes_) {
          if (s.get("z") == sliceIndex) {
-            exploredTiles.add(new Point( s.get(ROW_AXIS), s.get(COL_AXIS)));
+            exploredTiles.add(new Point( s.get(COL_AXIS), s.get(ROW_AXIS)));
          }
 
       }
@@ -1083,8 +1083,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
       if (b != null) {
          // Ensure correct byte order in case recycled from other source
-         ((ByteBuffer)b).order(BYTE_ORDER).clear();
-//         b.clear();
+         ((ByteBuffer)b).order(BYTE_ORDER);
+         //You can't chain the previous and following calls together or you get a weird java error
+         b.clear();
          return b;
       }
       return allocateByteBuffer(capacity);
