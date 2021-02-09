@@ -1,9 +1,75 @@
 # NDTiffStorage
-N-dimensional, multiresolution Tiff-based file format for Micro-Manager. Used by [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and [Pycro-Manager](https://github.com/micro-manager/pycro-manager). 
+NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files. It is the default saving format for [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and [Pycro-Manager](https://github.com/micro-manager/pycro-manager). The Java code for reading and writing these datasets is in this repository, and the [Python reader](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data) can be found in Pycro-Manager.
 
-Pycro-Manager also contains [Python readers](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data) for this format. 
+It makes use of the portability of TIFF specification to be used across many applications, while also providing additional features that enable fast writing and reading of multi-Terabyte datasets in which images are indexed along arbitrary, N-dimensional axes (e.g. `{'time': 1, 'channel: 2'}`). It is designed for flexibility, making no assumptions about the order or absecnce/presence of particular axis keys, and it allows for images of multiple sizes, bytes per pixel and RGB/grayscale in the same file. 
 
-## Specification
+On top of this, it provides optional features to save data as a multiresolution pyramid. By laying out images in a 2D grid, large multiresolution pyramids can be generated that span multiple fields of view.
+
+## Specification for NDTiff 
+
+### Directory layout
+The directory layout structure of an NDTiff dataset is as follows:
+```
+.
+└── Full resolution
+│   ├── NDTiff.index
+│   ├── {name}_NDTiffStack.tif
+│   └── {name}_NDTiffStack_1.tif
+└── display_settings.txt
+
+```
+Without the optional multiresolution features turned on, all the data will be contained in a folder called `Full resolution`. Datasets over 4GB will contain multiple TIFF files, since the TIFF specification maxes out at 4GB per file. Succesive files will have numbers appended to the end (e.g. `_1`, `_2`, ...)
+
+If the multi-resolution pyramid features are being used, this directory structure will be repeated with a new folder for each resolution level of the pyramid:
+```
+├── Downsampled_x44
+│   ├── NDTiff.index
+│   └── {name}_NDTiffStack.tif
+├── Downsampled_x2
+│   ├── NDTiff.index
+│   └── {name}_NDTiffStack.tif
+├── Full resolution
+│   ├── NDTiff.index
+│   └── {name}_NDTiffStack.tif
+└── display_settings.txt
+```
+
+#### Structure within each TIFF file
+
+The individual TIFF files are standard TIFF files, with the addition of a specialized header:
+
+**8 bytes**: Standard TIFF Header
+**4 bytes**: 32-bit integer containing the number 483729, added in v1.0.0 to differentiate from Micro-Manager multipage tiff files
+**4 bytes**: 32-bit integer containing major version (added in 1.0.0)
+**4 bytes**: 32-bit integer containing Summary metadata header, 2355492 
+**4 bytes**: 32-bit integer contianing K, the length of the summary metadata
+**K bytes**: JSON-serialized summary metadata, stored at UTF8 text
+
+#### The NDTiff.index file
+
+The index file is what enables the formats fast performance. Since a vanilla Tiff file doesn't contain any sort of table of contents, the entire file must be read through in order to discover the locations of all image data. To avoid the large performance penality that would come with this, the index file instead contains all the information needed to access data anywhere in the file in a concise form. The index file contains a series of entries (determined by the order images were saved), with each entry corresponding to a single image+metadata. It is structured as follows:
+
+**4 bytes:** (32 bit integer) containing the number K (length of next field)
+**K bytes:** JSON-serialized UTF8 text of the "axes" object identifying the image (e.g. `{'time': 1, 'channel: 2'`)
+**4 bytes:** (32 bit integer) containing the number N (length of next field)
+**N bytes:** UTF8 string of the filename within the dataset where the image and metadata are
+**4 bytes:** (32 bit unsigned integer) Byte offset of the image pixels
+**4 bytes:** (32 bit integer) Width of the image (assumed to be 2D)
+**4 bytes:** (32 bit integer) Height of the image
+**4 bytes:** (32 bit integer) Pixel type. 0 = 8bit; 1= 16bit; 2=8bitRGB
+**4 bytes:** (32 bit integer) Pixel compression. Currently only 0 (Uncompressed) defined
+**4 bytes:** (32 bit unsigned integer) Byte offset of the metadata, wich is UTF8 encoded serialized JSON
+**4 bytes:** (32 bit integer) Length of metadata
+**4 bytes:** (32 bit integer) Metadata compression. Currently only 0 (Uncompressed) defined
+
+#### The display_settings.txt file
+
+This file is optional, and contains settings for displaying the data contained within the file (colormaps, contrast settings, etc.). No particular form is assumed, other than it is all contained in JSON.
+
+
+## (DEPRECATED) Specification for NDTiff v1 and earlier
+
+This section contains the now deprecated description of NDTiff 1.0 files
 
 ### Header
 
