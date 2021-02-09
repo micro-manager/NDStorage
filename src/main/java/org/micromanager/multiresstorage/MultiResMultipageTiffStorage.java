@@ -85,7 +85,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
            System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
    private final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
 
-
+   private boolean memMapIndex_ ;
    private volatile boolean discardData_ = false;
 
    /**
@@ -100,7 +100,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       pooledBuffers_ = null;
       String fullResDir = dir + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
       //create fullResStorage
-      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null);
+      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null,
+              false);
       summaryMD_ = fullResStorage_.getSummaryMetadata();
       try {
          tiled_ = StorageMD.getTiledStorage(summaryMD_);
@@ -140,7 +141,8 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                break;
             }
             maxResolutionLevel_ = resIndex;
-            lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false, null, this, null));
+            lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false,
+                    null, this, null, false));
             resIndex++;
          }
       } else {
@@ -157,7 +159,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
            int overlapX, int overlapY, int width, int height, boolean tiled,
-                              Integer externalMaxResLevel, int savingQueueSize,Consumer<String> debugLogger) {
+                              Integer externalMaxResLevel, int savingQueueSize,
+                                       boolean memMapIndex, Consumer<String> debugLogger) {
+      memMapIndex_ = memMapIndex;
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -224,7 +228,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             try {
                //Create full Res storage
                fullResStorage_ = new ResolutionLevel(fullResDir, true, summaryMD_,
-                       MultiResMultipageTiffStorage.this, prefix_);
+                       MultiResMultipageTiffStorage.this, prefix_, memMapIndex_);
             } catch (IOException ex) {
                throw new RuntimeException("couldn't create Full res storage");
             }
@@ -708,7 +712,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
       try {
          JSONObject smd = new JSONObject(summaryMD_.toString());
-         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, this, prefix_);
+         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, this, prefix_, memMapIndex_);
          lowResStorages_.put(resIndex, storage);
       } catch (Exception ex) {
          throw new RuntimeException("Couldnt create downsampled storage");
@@ -871,16 +875,27 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       writingExecutor_.submit(new Runnable() {
          @Override
          public void run() {
+            if (debugLogger_ != null) {
+               debugLogger_.accept("Finishing writing executor");
+            }
             if (finished_) {
                return;
             }
+            if (debugLogger_ != null) {
+               debugLogger_.accept("Finishing fullres storage");
+            }
             fullResStorage_.finished();
-            for (ResolutionLevel s : lowResStorages_.values()) {
-               if (s != null) {
-                  //s shouldn't be null ever, this check is to prevent window from getting into unclosable state
-                  //when other bugs prevent storage from being properly created
-                  s.finished();
+            if (tiled_) {
+               for (ResolutionLevel s : lowResStorages_.values()) {
+                  if (s != null) {
+                     //s shouldn't be null ever, this check is to prevent window from getting into unclosable state
+                     //when other bugs prevent storage from being properly created
+                     s.finished();
+                  }
                }
+            }
+            if (debugLogger_ != null) {
+               debugLogger_.accept("Shutting down writing excutor");
             }
             writingExecutor_.shutdown();
             if (displaySettings_ != null) {
@@ -892,9 +907,15 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                }
                w.finishedWriting();
             }
+            if (debugLogger_ != null) {
+               debugLogger_.accept("Display settings written");
+            }
             
          }
       });
+      if (debugLogger_ != null) {
+         debugLogger_.accept("Awaiting writing executor termination");
+      }
       while (true) {
          try {
             if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) {

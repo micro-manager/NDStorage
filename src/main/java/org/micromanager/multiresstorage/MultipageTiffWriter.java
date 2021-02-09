@@ -226,6 +226,8 @@ public class MultipageTiffWriter {
       if (masterMPTiffStorage_.debugLogger_ != null) {
          masterMPTiffStorage_.debugLogger_.accept("Speed (GB/s)  " + gbPerS);
       }
+      raFile_ = null;
+      fileChannel_ = null;
    }
 
    /**

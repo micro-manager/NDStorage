@@ -21,10 +21,7 @@
 //
 package org.micromanager.multiresstorage;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import javax.swing.*;
@@ -53,7 +50,7 @@ public final class ResolutionLevel {
    private int firstImageWidth_, firstImageHeight_ = 0;
 
    public ResolutionLevel(String dir, boolean newDataSet, JSONObject summaryMetadata,
-                           MultiResMultipageTiffStorage masterMultiRes, String prefix) throws IOException {
+                           MultiResMultipageTiffStorage masterMultiRes, String prefix, boolean memMapIndex) throws IOException {
       masterMultiResStorage_ = masterMultiRes;
       prefix_ = prefix;
 
@@ -71,7 +68,7 @@ public final class ResolutionLevel {
          }
       } else{
          try {
-            indexWriter_ = new IndexWriter(directory_);
+            indexWriter_ = new IndexWriter(directory_, memMapIndex);
          } catch (IOException e) {
             e.printStackTrace();
             throw new RuntimeException(e);
@@ -183,6 +180,9 @@ public final class ResolutionLevel {
 
    public void putImage(String indexKey, Object pixels, byte[] metadata,
                                   boolean rgb, int imageHeight, int imageWidth) throws IOException {
+      if (masterMultiResStorage_.debugLogger_ != null) {
+         masterMultiResStorage_.debugLogger_.accept("1111111111");
+      }
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
       }
@@ -196,10 +196,25 @@ public final class ResolutionLevel {
          }
       }
       try {
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept("222222");
+         }
          IndexEntryData ied = fileSet_.writeImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept("333333");
+         }
          tiffReadersByLabel_.put(indexKey, fileSet_.getCurrentReader());
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept("44444444");
+         }
          indexWriter_.addEntry(ied);
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept("555555555");
+         }
          removePendingImage(indexKey);
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept("66666666");
+         }
       } catch (IOException ex) {
          throw new RuntimeException("problem writing image to file");
       }
@@ -227,12 +242,20 @@ public final class ResolutionLevel {
 
       try {
          fileSet_.finished();
+         indexWriter_.finishedWriting();
       } catch (Exception ex) {
+         StringWriter sw = new StringWriter();
+         PrintWriter pw = new PrintWriter(sw);
+         ex.printStackTrace(pw);
+         String sStackTrace = sw.toString();
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept(sStackTrace);
+         }
          ex.printStackTrace();
          throw new RuntimeException(ex);
       }
 
-      indexWriter_.finishedWriting();
+
       fileSet_ = null;
       finished_ = true;
    }
@@ -328,13 +351,16 @@ public final class ResolutionLevel {
 
                //only need to finish last one here because previous ones in set are finished as they fill up with images
                tiffWriters_.getLast().finishedWriting();
-               //close all
-               for (MultipageTiffWriter w : tiffWriters_) {
-                  w.close();
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Last writer finished");
                }
+
                tiffWriters_ = null;
                finished_ = true;
             } catch (Exception e) {
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept(e.getMessage());
+               }
                e.printStackTrace();
                throw new RuntimeException(e);
             }
