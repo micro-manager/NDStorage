@@ -62,12 +62,10 @@ public void finishedWriting() throws IOException {
       int writtenLength;
       if (memMapped_) {
          writtenLength = mappedByteBuffer_.position();
-//         fileChannel_.close();
          raFile_.setLength(writtenLength);
          raFile_.close();
       } else {
          writtenLength = (int) fileChannel_.position();
-         fileChannel_.close();
          raFile_.setLength(writtenLength);
          raFile_.close();
       }
