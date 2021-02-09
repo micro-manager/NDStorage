@@ -38,45 +38,45 @@ If the multi-resolution pyramid features are being used, this directory structur
 
 The individual TIFF files are standard TIFF files, with the addition of a specialized header:
 
-**8 bytes**: Standard TIFF Header
+*8 bytes*: Standard TIFF Header
 
-**4 bytes**: 32-bit integer containing the number 483729, added in v1.0.0 to differentiate from Micro-Manager multipage tiff files
+*4 bytes*: 32-bit integer containing the number 483729, added in v1.0.0 to differentiate from Micro-Manager multipage tiff files
 
-**4 bytes**: 32-bit integer containing major version (added in 1.0.0)
+*4 bytes*: 32-bit integer containing major version (added in 1.0.0)
 
-**4 bytes**: 32-bit integer containing Summary metadata header, 2355492 
+*4 bytes*: 32-bit integer containing Summary metadata header, 2355492 
 
-**4 bytes**: 32-bit integer contianing K, the length of the summary metadata
+*4 bytes*: 32-bit integer contianing K, the length of the summary metadata
 
-**K bytes**: JSON-serialized summary metadata, stored at UTF8 text
+*K bytes*: JSON-serialized summary metadata, stored at UTF8 text
 
 #### The NDTiff.index file
 
 The index file is what enables the formats fast performance. Since a vanilla Tiff file doesn't contain any sort of table of contents, the entire file must be read through in order to discover the locations of all image data. To avoid the large performance penality that would come with this, the index file instead contains all the information needed to access data anywhere in the file in a concise form. The index file contains a series of entries (determined by the order images were saved), with each entry corresponding to a single image+metadata. It is structured as follows:
 
-**4 bytes:** (32 bit integer) containing the number K (length of next field)
+*4 bytes:* (32 bit integer) containing the number K (length of next field)
 
-**K bytes:** JSON-serialized UTF8 text of the "axes" object identifying the image (e.g. `{'time': 1, 'channel: 2'`)
+*K bytes:* JSON-serialized UTF8 text of the "axes" object identifying the image (e.g. `{'time': 1, 'channel: 2'`)
 
-**4 bytes:** (32 bit integer) containing the number N (length of next field)
+*4 bytes:* (32 bit integer) containing the number N (length of next field)
 
-**N bytes:** UTF8 string of the filename within the dataset where the image and metadata are
+*N bytes:* UTF8 string of the filename within the dataset where the image and metadata are
 
-**4 bytes:** (32 bit unsigned integer) Byte offset of the image pixels
+*4 bytes:* (32 bit unsigned integer) Byte offset of the image pixels
 
-**4 bytes:** (32 bit integer) Width of the image (assumed to be 2D)
+*4 bytes:* (32 bit integer) Width of the image (assumed to be 2D)
 
-**4 bytes:** (32 bit integer) Height of the image
+*4 bytes:* (32 bit integer) Height of the image
 
-**4 bytes:** (32 bit integer) Pixel type. 0 = 8bit; 1= 16bit; 2=8bitRGB
+*4 bytes:* (32 bit integer) Pixel type. 0 = 8bit; 1= 16bit; 2=8bitRGB
 
-**4 bytes:** (32 bit integer) Pixel compression. Currently only 0 (Uncompressed) defined
+*4 bytes:* (32 bit integer) Pixel compression. Currently only 0 (Uncompressed) defined
 
-**4 bytes:** (32 bit unsigned integer) Byte offset of the metadata, wich is UTF8 encoded serialized JSON
+*4 bytes:* (32 bit unsigned integer) Byte offset of the metadata, wich is UTF8 encoded serialized JSON
 
-**4 bytes:** (32 bit integer) Length of metadata
+*4 bytes:* (32 bit integer) Length of metadata
 
-**4 bytes:** (32 bit integer) Metadata compression. Currently only 0 (Uncompressed) defined
+*4 bytes:* (32 bit integer) Metadata compression. Currently only 0 (Uncompressed) defined
 
 #### The display_settings.txt file
 
