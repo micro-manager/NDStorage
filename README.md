@@ -10,7 +10,7 @@ On top of this, it provides optional features to save data as a multiresolution 
 ### Directory layout
 The directory layout structure of an NDTiff dataset is as follows:
 ```
-.
+
 └── Full resolution
 │   ├── NDTiff.index
 │   ├── {name}_NDTiffStack.tif
@@ -22,7 +22,7 @@ Without the optional multiresolution features turned on, all the data will be co
 
 If the multi-resolution pyramid features are being used, this directory structure will be repeated with a new folder for each resolution level of the pyramid:
 ```
-├── Downsampled_x44
+├── Downsampled_x4
 │   ├── NDTiff.index
 │   └── {name}_NDTiffStack.tif
 ├── Downsampled_x2
