@@ -19,12 +19,9 @@ public class IndexWriter {
 
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
-   private MappedByteBuffer mappedByteBuffer_;
 
-   private boolean memMapped_ = true;
 
-   public IndexWriter(String directory, boolean memMap) throws IOException {
-      memMapped_ = memMap;
+   public IndexWriter(String directory) throws IOException {
       directory += (directory.endsWith(File.separator) ? "" : File.separator);
       String filename = "NDTiff.index";
       File f = new File(directory + "/" + filename);
@@ -34,9 +31,6 @@ public class IndexWriter {
       try {
          raFile_.setLength(INITIAL_FILE_SIZE);
          fileChannel_ = raFile_.getChannel();
-         if (memMapped_) {
-            mappedByteBuffer_ = fileChannel_.map(FileChannel.MapMode.READ_WRITE, 0, INITIAL_FILE_SIZE);
-         }
       } catch (IOException e) {
          SwingUtilities.invokeLater(new Runnable() {
             @Override
@@ -50,26 +44,14 @@ public class IndexWriter {
    }
 
    public void addEntry(IndexEntryData i) throws IOException {
-      if (memMapped_) {
-         mappedByteBuffer_.put((ByteBuffer) i.asByteBuffer());
-      } else {
-         fileChannel_.write((ByteBuffer) i.asByteBuffer());
-      }
-      //TODO: might need t check for overflow if mem mapping
+      fileChannel_.write((ByteBuffer) i.asByteBuffer());
    }
 
 public void finishedWriting() throws IOException {
       int writtenLength;
-      if (memMapped_) {
-         writtenLength = mappedByteBuffer_.position();
-         raFile_.setLength(writtenLength);
-         raFile_.close();
-      } else {
-         writtenLength = (int) fileChannel_.position();
-         raFile_.setLength(writtenLength);
-         raFile_.close();
-      }
-
+      writtenLength = (int) fileChannel_.position();
+      raFile_.setLength(writtenLength);
+      raFile_.close();
 }
 
 }

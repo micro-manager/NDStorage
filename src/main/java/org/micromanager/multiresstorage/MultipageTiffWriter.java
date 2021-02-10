@@ -378,9 +378,11 @@ public class MultipageTiffWriter {
 
       buffers_.add(ifdAndSmallValsBuffer);
 
+
       Buffer pixBuff = getPixelBuffer(pixels, rgb);
       buffers_.add((ByteBuffer) pixBuff);
       buffers_.add(ByteBuffer.wrap(metadata));
+
 
       firstIFD_ = false;
 

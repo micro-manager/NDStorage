@@ -50,7 +50,7 @@ public final class ResolutionLevel {
    private int firstImageWidth_, firstImageHeight_ = 0;
 
    public ResolutionLevel(String dir, boolean newDataSet, JSONObject summaryMetadata,
-                           MultiResMultipageTiffStorage masterMultiRes, String prefix, boolean memMapIndex) throws IOException {
+                           MultiResMultipageTiffStorage masterMultiRes, String prefix) throws IOException {
       masterMultiResStorage_ = masterMultiRes;
       prefix_ = prefix;
 
@@ -68,11 +68,12 @@ public final class ResolutionLevel {
          }
       } else{
          try {
-            indexWriter_ = new IndexWriter(directory_, memMapIndex);
+            indexWriter_ = new IndexWriter(directory_);
          } catch (IOException e) {
             e.printStackTrace();
             throw new RuntimeException(e);
          }
+
       }
    }
 
@@ -207,7 +208,9 @@ public final class ResolutionLevel {
          if (masterMultiResStorage_.debugLogger_ != null) {
             masterMultiResStorage_.debugLogger_.accept("44444444");
          }
-         indexWriter_.addEntry(ied);
+         if (indexWriter_ != null) {
+            indexWriter_.addEntry(ied);
+         }
          if (masterMultiResStorage_.debugLogger_ != null) {
             masterMultiResStorage_.debugLogger_.accept("555555555");
          }
@@ -242,7 +245,9 @@ public final class ResolutionLevel {
 
       try {
          fileSet_.finished();
-         indexWriter_.finishedWriting();
+         if (indexWriter_ != null) {
+            indexWriter_.finishedWriting();
+         }
       } catch (Exception ex) {
          StringWriter sw = new StringWriter();
          PrintWriter pw = new PrintWriter(sw);

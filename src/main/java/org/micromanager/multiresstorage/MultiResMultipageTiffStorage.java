@@ -85,7 +85,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
            System.getProperty("sun.arch.data.model").equals("32") ? 0 : 3;
    private final ConcurrentHashMap<Integer, Deque<ByteBuffer>> pooledBuffers_;
 
-   private boolean memMapIndex_ ;
    private volatile boolean discardData_ = false;
 
    /**
@@ -100,8 +99,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       pooledBuffers_ = null;
       String fullResDir = dir + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
       //create fullResStorage
-      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null,
-              false);
+      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null);
       summaryMD_ = fullResStorage_.getSummaryMetadata();
       try {
          tiled_ = StorageMD.getTiledStorage(summaryMD_);
@@ -142,7 +140,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             }
             maxResolutionLevel_ = resIndex;
             lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false,
-                    null, this, null, false));
+                    null, this, null));
             resIndex++;
          }
       } else {
@@ -160,8 +158,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
            int overlapX, int overlapY, int width, int height, boolean tiled,
                               Integer externalMaxResLevel, int savingQueueSize,
-                                       boolean memMapIndex, Consumer<String> debugLogger) {
-      memMapIndex_ = memMapIndex;
+                                       Consumer<String> debugLogger) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -180,16 +177,15 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
 
       loaded_ = false;
-//      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
-//         @Override
-//         public Thread newThread(Runnable r) {
-//            return new Thread(r, "Multipage Tiff data writing executor");
-//         }
-//      });
+      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
+         @Override
+         public Thread newThread(Runnable r) {
+            return new Thread(r, "Multipage Tiff data writing executor");
+         }
+      });
 
       writingTaskQueue_ = new LinkedBlockingQueue<Runnable>(savingQueueSize);
-      writingExecutor_ = new ThreadPoolExecutor(1,
-              1,1,TimeUnit.MILLISECONDS, writingTaskQueue_);
+
 
       try {
          //make a copy in case tag changes are needed later
@@ -214,7 +210,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          throw new RuntimeException("Couldn't make acquisition directory");
       }
 
-      writingExecutor_.submit(new Runnable() {
+      blockingWritingTaskHandoff(new Runnable() {
          @Override
          public void run() {
             //create directory for full res data
@@ -228,7 +224,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             try {
                //Create full Res storage
                fullResStorage_ = new ResolutionLevel(fullResDir, true, summaryMD_,
-                       MultiResMultipageTiffStorage.this, prefix_, memMapIndex_);
+                       MultiResMultipageTiffStorage.this, prefix_);
             } catch (IOException ex) {
                throw new RuntimeException("couldn't create Full res storage");
             }
@@ -712,7 +708,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
       try {
          JSONObject smd = new JSONObject(summaryMD_.toString());
-         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, this, prefix_, memMapIndex_);
+         ResolutionLevel storage = new ResolutionLevel(dsDir, true, smd, this, prefix_);
          lowResStorages_.put(resIndex, storage);
       } catch (Exception ex) {
          throw new RuntimeException("Couldnt create downsampled storage");
@@ -760,26 +756,26 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       String indexKey = IndexEntryData.serializeAxes(axessss);
       fullResStorage_.addToWritePendingImages(indexKey, ti);
 
-      return writingExecutor_.submit(new Runnable() {
-         @Override
-         public void run() {
-            if (discardData_) {
-               return;
-            }
-            try {
-               //Make a local copy
-               HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
-               imageAxes_.add(axes);
-
-               //write to full res storage as normal (i.e. with overlap pixels present)
-               fullResStorage_.putImage(indexKey, pixels, metadata,
-                            rgb, imageHeight, imageWidth);
-
-            } catch (IOException ex) {
-               throw new RuntimeException(ex.toString());
-            }
+   return blockingWritingTaskHandoff(new Runnable() {
+      @Override
+      public void run() {
+         if (discardData_) {
+            return;
          }
-      });
+         try {
+            //Make a local copy
+            HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
+            imageAxes_.add(axes);
+
+            //write to full res storage as normal (i.e. with overlap pixels present)
+            fullResStorage_.putImage(indexKey, pixels, metadata,
+                    rgb, imageHeight, imageWidth);
+
+         } catch (IOException ex) {
+            throw new RuntimeException(ex.toString());
+         }
+      }
+   });
    }
 
    static String getAxesString(HashMap<String, Integer> axes) {
@@ -806,7 +802,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       byte[] metadata = ti.tags.toString().getBytes();
       String indexKey = IndexEntryData.serializeAxes(StorageMD.getAxes(ti.tags));
       fullResStorage_.addToWritePendingImages(indexKey, ti);
-      return writingExecutor_.submit(new Runnable() {
+      return blockingWritingTaskHandoff(new Runnable() {
          @Override
          public void run() {
             try {
@@ -865,14 +861,34 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       }
    }
 
+   private Future blockingWritingTaskHandoff(Runnable r) {
+      //Wait if queue is full, otherwise add and signal to running executor do it
+      try {
+         writingTaskQueue_.put(r);
+         return writingExecutor_.submit(new Runnable() {
+            @Override
+            public void run() {
+               try {
+                  writingTaskQueue_.take().run();
+               } catch (InterruptedException e) {
+                  throw new RuntimeException(e);
+               }
+            }
+         });
+
+      } catch (InterruptedException e) {
+         throw new RuntimeException(e);
+      }
+   }
+
    /**
     * Singal to finish writing and block until everything pending is done
     */
-   public void finishedWriting() {
+   public void finishedWriting()  {
       if (debugLogger_ != null) {
          debugLogger_.accept("Finished writing. Remaining writing task queue size = " + writingTaskQueue_.size());
       }
-      writingExecutor_.submit(new Runnable() {
+      blockingWritingTaskHandoff(new Runnable() {
          @Override
          public void run() {
             if (debugLogger_ != null) {
