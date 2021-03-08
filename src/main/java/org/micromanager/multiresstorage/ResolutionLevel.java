@@ -387,7 +387,7 @@ public final class ResolutionLevel {
       public IndexEntryData writeImage(String indexKey, Object pixels, byte[] metadata,
                                        boolean rgb, int imageHeight, int imageWidth) throws IOException {
             //check if current writer is out of space, if so, make a new one
-            if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata)) {
+            if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata, rgb)) {
                if (masterMultiResStorage_.debugLogger_ != null) {
                   masterMultiResStorage_.debugLogger_.accept("Creating new tiff file");
                }

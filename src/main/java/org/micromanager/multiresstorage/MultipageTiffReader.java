@@ -147,21 +147,6 @@ public class MultipageTiffReader {
       return false;
    }
 
-//   private void getRGBAndByteDepth(JSONObject md) {
-//      try {
-//         String pixelType = md.getString("PixelType");
-//         rgb_ = pixelType.startsWith("RGB");
-//         
-//            if (pixelType.equals("RGB32") || pixelType.equals("GRAY8")) {
-//               byteDepth_ = 1;
-//            } else {
-//               byteDepth_ = 2;
-//            }
-//      } catch (Exception ex) {
-//         throw new RuntimeException(ex);
-//      }
-//   }
-
    public JSONObject getSummaryMetadata() {
       return summaryMetadata_;
    }
@@ -260,10 +245,13 @@ public class MultipageTiffReader {
    }
    
    private TaggedImage readTaggedImage(IndexEntryData data) throws IOException {
-      int numBytes = (int) (data.pixWidth_ * data.pixHeight_ *
+      int numBytesOnDisk = (int) (data.pixWidth_ * data.pixHeight_ *
                     (data.pixelType_ == IndexEntryData.SIXTEEN_BIT ? 2 :
                             (data.pixelType_ == IndexEntryData.EIGHT_BIT ? 1 : 3)));
-      ByteBuffer pixelBuffer = ByteBuffer.allocate(numBytes).order(byteOrder_);
+      int numBytesReturned = (int) (data.pixWidth_ * data.pixHeight_ *
+              (data.pixelType_ == IndexEntryData.SIXTEEN_BIT ? 2 :
+                      (data.pixelType_ == IndexEntryData.EIGHT_BIT ? 1 : 4)));
+      ByteBuffer pixelBuffer = ByteBuffer.allocate(numBytesOnDisk).order(byteOrder_);
       ByteBuffer mdBuffer = ByteBuffer.allocate((int) data.mdLength_).order(byteOrder_);
       fileChannel_.read(pixelBuffer, data.pixOffset_);
       fileChannel_.read(mdBuffer, data.mdOffset_);
@@ -279,14 +267,11 @@ public class MultipageTiffReader {
       
       if (data.isRGB()) {
          if (data.getByteDepth() == 1) {
-            byte[] pixels = new byte[numBytes];
-            int i = 0;
-            for (byte b : pixelBuffer.array()) {
-               if (i % 4 == 0) {
-                  i++;
-               }
-               pixels[i] = b;
-               i++;
+            byte[] pixels = new byte[numBytesReturned];
+            for (int i = 0; i < data.pixWidth_ * data.pixHeight_; i++) {
+               pixels[i * 4 + 2] = pixelBuffer.get(i * 3);
+               pixels[i * 4 + 1] = pixelBuffer.get(i * 3 + 1);
+               pixels[i * 4] = pixelBuffer.get(i * 3 + 2);
             }
             return new TaggedImage(pixels, md);
          }
