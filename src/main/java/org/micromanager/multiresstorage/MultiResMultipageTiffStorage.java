@@ -72,6 +72,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private String prefix_;
    Consumer<String> debugLogger_ = null;
    private LinkedBlockingQueue<Runnable> writingTaskQueue_;
+   private LinkedBlockingQueue<ImageWrittenListener> imageWrittenListeners_ = new LinkedBlockingQueue<ImageWrittenListener>();
 
    //Assume that these are constant over the dataset for dipslay purposes, though they dont neccessarily need to be for storage
    private boolean rgb_;
@@ -679,8 +680,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 //               MultiresMetadata.setWidth(tags, tileWidth_);
 //               MultiresMetadata.setHeight(tags, tileHeight_);
 
-                  lowResStorages_.get(resolutionIndex).putImage(indexKey, currentLevelPix, tags.toString().getBytes(),
+                  IndexEntryData ied = lowResStorages_.get(resolutionIndex).putImage(indexKey, currentLevelPix, tags.toString().getBytes(),
                           rgb, tileHeight_, tileWidth_);
+                  for (ImageWrittenListener l : imageWrittenListeners_) {
+                     l.imageWritten(ied);
+                  }
 
                } else {
                   //Image already exists, only overwrite pixels to include new tiles
@@ -768,8 +772,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             imageAxes_.add(axes);
 
             //write to full res storage as normal (i.e. with overlap pixels present)
-            fullResStorage_.putImage(indexKey, pixels, metadata,
+            IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadata,
                     rgb, imageHeight, imageWidth);
+            for (ImageWrittenListener l : imageWrittenListeners_) {
+               l.imageWritten(ied);
+            }
 
          } catch (IOException ex) {
             throw new RuntimeException(ex.toString());
@@ -814,7 +821,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                imageAxes_.add(axes);
 
                //write to full res storage as normal (i.e. with overlap pixels present)
-               fullResStorage_.putImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
+               IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
+               for (ImageWrittenListener l : imageWrittenListeners_) {
+                  l.imageWritten(ied);
+               }
 
                if (tiled_) {
                   //check if maximum resolution level needs to be updated based on full size of image
@@ -859,6 +869,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       } else {
          return lowResStorages_.get(dsIndex).getImage(IndexEntryData.serializeAxes(axes));
       }
+   }
+
+   @Override
+   public void addImageWrittenListener(ImageWrittenListener iwl) {
+      imageWrittenListeners_.add(iwl);
    }
 
    private Future blockingWritingTaskHandoff(Runnable r) {
@@ -923,6 +938,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                }
                w.finishedWriting();
             }
+            for (ImageWrittenListener l : imageWrittenListeners_) {
+               l.imageWritten(IndexEntryData.createFinishedEntry());
+            }
+            imageWrittenListeners_ = null;
             if (debugLogger_ != null) {
                debugLogger_.accept("Display settings written");
             }

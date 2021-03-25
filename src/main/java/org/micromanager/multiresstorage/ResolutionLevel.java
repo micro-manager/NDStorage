@@ -179,11 +179,8 @@ public final class ResolutionLevel {
       }
    }
 
-   public void putImage(String indexKey, Object pixels, byte[] metadata,
+   public IndexEntryData putImage(String indexKey, Object pixels, byte[] metadata,
                                   boolean rgb, int imageHeight, int imageWidth) throws IOException {
-      if (masterMultiResStorage_.debugLogger_ != null) {
-         masterMultiResStorage_.debugLogger_.accept("1111111111");
-      }
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
       }
@@ -197,27 +194,14 @@ public final class ResolutionLevel {
          }
       }
       try {
-         if (masterMultiResStorage_.debugLogger_ != null) {
-            masterMultiResStorage_.debugLogger_.accept("222222");
-         }
          IndexEntryData ied = fileSet_.writeImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
-         if (masterMultiResStorage_.debugLogger_ != null) {
-            masterMultiResStorage_.debugLogger_.accept("333333");
-         }
          tiffReadersByLabel_.put(indexKey, fileSet_.getCurrentReader());
-         if (masterMultiResStorage_.debugLogger_ != null) {
-            masterMultiResStorage_.debugLogger_.accept("44444444");
-         }
          if (indexWriter_ != null) {
             indexWriter_.addEntry(ied);
          }
-         if (masterMultiResStorage_.debugLogger_ != null) {
-            masterMultiResStorage_.debugLogger_.accept("555555555");
-         }
          removePendingImage(indexKey);
-         if (masterMultiResStorage_.debugLogger_ != null) {
-            masterMultiResStorage_.debugLogger_.accept("66666666");
-         }
+
+         return ied;
       } catch (IOException ex) {
          throw new RuntimeException("problem writing image to file");
       }
