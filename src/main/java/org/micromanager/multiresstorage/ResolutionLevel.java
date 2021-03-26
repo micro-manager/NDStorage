@@ -21,10 +21,7 @@
 //
 package org.micromanager.multiresstorage;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import javax.swing.*;
@@ -76,6 +73,7 @@ public final class ResolutionLevel {
             e.printStackTrace();
             throw new RuntimeException(e);
          }
+
       }
    }
 
@@ -181,7 +179,7 @@ public final class ResolutionLevel {
       }
    }
 
-   public void putImage(String indexKey, Object pixels, byte[] metadata,
+   public IndexEntryData putImage(String indexKey, Object pixels, byte[] metadata,
                                   boolean rgb, int imageHeight, int imageWidth) throws IOException {
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
@@ -198,8 +196,12 @@ public final class ResolutionLevel {
       try {
          IndexEntryData ied = fileSet_.writeImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
          tiffReadersByLabel_.put(indexKey, fileSet_.getCurrentReader());
-         indexWriter_.addEntry(ied);
+         if (indexWriter_ != null) {
+            indexWriter_.addEntry(ied);
+         }
          removePendingImage(indexKey);
+
+         return ied;
       } catch (IOException ex) {
          throw new RuntimeException("problem writing image to file");
       }
@@ -227,12 +229,22 @@ public final class ResolutionLevel {
 
       try {
          fileSet_.finished();
+         if (indexWriter_ != null) {
+            indexWriter_.finishedWriting();
+         }
       } catch (Exception ex) {
+         StringWriter sw = new StringWriter();
+         PrintWriter pw = new PrintWriter(sw);
+         ex.printStackTrace(pw);
+         String sStackTrace = sw.toString();
+         if (masterMultiResStorage_.debugLogger_ != null) {
+            masterMultiResStorage_.debugLogger_.accept(sStackTrace);
+         }
          ex.printStackTrace();
          throw new RuntimeException(ex);
       }
 
-      indexWriter_.finishedWriting();
+
       fileSet_ = null;
       finished_ = true;
    }
@@ -328,13 +340,16 @@ public final class ResolutionLevel {
 
                //only need to finish last one here because previous ones in set are finished as they fill up with images
                tiffWriters_.getLast().finishedWriting();
-               //close all
-               for (MultipageTiffWriter w : tiffWriters_) {
-                  w.close();
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept("Last writer finished");
                }
+
                tiffWriters_ = null;
                finished_ = true;
             } catch (Exception e) {
+               if (masterMultiResStorage_.debugLogger_ != null) {
+                  masterMultiResStorage_.debugLogger_.accept(e.getMessage());
+               }
                e.printStackTrace();
                throw new RuntimeException(e);
             }
@@ -356,7 +371,7 @@ public final class ResolutionLevel {
       public IndexEntryData writeImage(String indexKey, Object pixels, byte[] metadata,
                                        boolean rgb, int imageHeight, int imageWidth) throws IOException {
             //check if current writer is out of space, if so, make a new one
-            if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata)) {
+            if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata, rgb)) {
                if (masterMultiResStorage_.debugLogger_ != null) {
                   masterMultiResStorage_.debugLogger_.accept("Creating new tiff file");
                }

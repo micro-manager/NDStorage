@@ -226,6 +226,8 @@ public class MultipageTiffWriter {
       if (masterMPTiffStorage_.debugLogger_ != null) {
          masterMPTiffStorage_.debugLogger_.accept("Speed (GB/s)  " + gbPerS);
       }
+      raFile_ = null;
+      fileChannel_ = null;
    }
 
    /**
@@ -238,28 +240,32 @@ public class MultipageTiffWriter {
       raFile_ = null;
    }
 
-   private int bytesPerImagePixels(Object pixels) {
+   private int bytesPerImagePixels(Object pixels, boolean rgb) {
       int bytesPerPixels;
-      if (pixels instanceof byte[]) {
-         bytesPerPixels = ((byte[]) pixels).length;
-      } else if (pixels instanceof short[]) {
-         bytesPerPixels = ((short[]) pixels).length * 2;
-      } else if (pixels instanceof int[]) {
-         bytesPerPixels = ((int[]) pixels).length * 4;
-      } else if (pixels instanceof float[]) {
-         bytesPerPixels = ((float[]) pixels).length * 4;
+      if (rgb) {
+         bytesPerPixels = ((byte[]) pixels).length / 4 * 3;
       } else {
-         throw new RuntimeException("unknown pixel type");
+         if (pixels instanceof byte[]) {
+            bytesPerPixels = ((byte[]) pixels).length;
+         } else if (pixels instanceof short[]) {
+            bytesPerPixels = ((short[]) pixels).length * 2;
+         } else if (pixels instanceof int[]) {
+            bytesPerPixels = ((int[]) pixels).length * 4;
+         } else if (pixels instanceof float[]) {
+            bytesPerPixels = ((float[]) pixels).length * 4;
+         } else {
+            throw new RuntimeException("unknown pixel type");
+         }
       }
       return  bytesPerPixels;
    }
 
-   public boolean hasSpaceToWrite(Object pixels, byte[] metadata) throws IOException {
+   public boolean hasSpaceToWrite(Object pixels, byte[] metadata, boolean rgb) throws IOException {
       int mdLength = metadata.length;
       int IFDSize = ENTRIES_PER_IFD * 12 + 4 + 16;
       //5 MB extra padding...just to be safe...
       int extraPadding = 5000000;
-      long bytesPerPixels = bytesPerImagePixels(pixels);
+      long bytesPerPixels = bytesPerImagePixels(pixels, rgb);
       long size = mdLength + IFDSize + bytesPerPixels + extraPadding + fileChannel_.position();
 
       if (size >= MAX_FILE_SIZE) {
@@ -310,8 +316,8 @@ public class MultipageTiffWriter {
          fileChannel_.position(fileChannel_.position() + 1); //Make IFD start on word
       }
 
-      int byteDepth = pixels instanceof byte[] ? 1 : (pixels instanceof short[] ? 2 : 4);
-      int bytesPerImagePixels = bytesPerImagePixels(pixels);
+      int byteDepth = pixels instanceof byte[] ? 1 : (pixels instanceof short[] ? 2 : 1);
+      int bytesPerImagePixels = bytesPerImagePixels(pixels, rgb);
       char numEntries = ENTRIES_PER_IFD;
 
       //2 bytes for number of directory entries, 12 bytes per directory entry, 4 byte offset of next IFD
@@ -330,7 +336,7 @@ public class MultipageTiffWriter {
       long xResolutionOffset = bitsPerSampleOffset + (rgb ? 6 : 0);
       long yResolutionOffset = xResolutionOffset + 8;
       long pixelDataOffset = yResolutionOffset + 8;
-      long metadataOffset = pixelDataOffset + bytesPerImagePixels(pixels);
+      long metadataOffset = pixelDataOffset + bytesPerImagePixels(pixels, rgb);
 
       long nextIFDOffset = metadataOffset + metadata.length;
       if (nextIFDOffset % 2 == 1) {
@@ -376,9 +382,11 @@ public class MultipageTiffWriter {
 
       buffers_.add(ifdAndSmallValsBuffer);
 
+
       Buffer pixBuff = getPixelBuffer(pixels, rgb);
       buffers_.add((ByteBuffer) pixBuff);
       buffers_.add(ByteBuffer.wrap(metadata));
+
 
       firstIFD_ = false;
 
@@ -418,9 +426,10 @@ public class MultipageTiffWriter {
             byte[] rgbPix = new byte[originalPix.length * 3 / 4];
             int numPix = originalPix.length / 4;
             for (int tripletIndex = 0; tripletIndex < numPix; tripletIndex++) {
-               rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4 + 1];
-               rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 2];
-               rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 + 3];
+               //reorer colors so they save correctly
+               rgbPix[tripletIndex * 3] = originalPix[tripletIndex * 4 + 2];
+               rgbPix[tripletIndex * 3 + 1] = originalPix[tripletIndex * 4 + 1];
+               rgbPix[tripletIndex * 3 + 2] = originalPix[tripletIndex * 4 ];
             }
             return ByteBuffer.wrap(rgbPix);
 //         } 

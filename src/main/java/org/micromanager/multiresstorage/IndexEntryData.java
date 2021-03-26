@@ -37,6 +37,8 @@ public class IndexEntryData {
    public final long mdCompression_;
    public final String filename_;
 
+   public final boolean dataSetFinishedEntry_;
+
    public IndexEntryData(String axesKey, long pixelType, long pixOffset,
                          long pixWidth, long pixHeight, long mdOffset, long mdLength,
                          String filename) {
@@ -50,6 +52,32 @@ public class IndexEntryData {
       pixelCompression_ = UNCOMPRESSED;
       mdCompression_ = UNCOMPRESSED;
       filename_ = filename;
+      dataSetFinishedEntry_ = false;
+   }
+
+   public static IndexEntryData createFinishedEntry() {
+      return new IndexEntryData();
+   }
+
+   /**
+    * Used when finished writing to signal end of dataset
+    */
+   public IndexEntryData() {
+      axesKey_ = null;
+      pixOffset_ = 0;
+      pixWidth_ = 0;
+      pixHeight_ = 0;
+      mdLength_ = 0;
+      mdOffset_ = 0;
+      pixelType_ = 0;
+      pixelCompression_ = UNCOMPRESSED;
+      mdCompression_ = UNCOMPRESSED;
+      filename_ = null;
+      dataSetFinishedEntry_ = true;
+   }
+
+   public boolean isDataSetFinishedEntry() {
+      return dataSetFinishedEntry_;
    }
 
    private static long unsignInt(int i) {

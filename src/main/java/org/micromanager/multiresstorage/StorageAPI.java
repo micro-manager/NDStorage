@@ -5,10 +5,7 @@
  */
 package org.micromanager.multiresstorage;
 
-import java.awt.Point;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
 
@@ -68,6 +65,12 @@ public interface StorageAPI {
     * Called when no more data will be written to this dataset (but reading still allowed)
     */
    public void finishedWriting();
+
+   /**
+    * Add a listener that gets notified when something written to disk
+    * To minimize performance hit, this listener should be extremely fast
+    */
+   public void addImageWrittenListener(ImageWrittenListener iwc);
 
    /**
     * Get the path to the top level folder where this dataset is or null if its not saved to disk

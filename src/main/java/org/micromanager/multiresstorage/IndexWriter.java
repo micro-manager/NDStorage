@@ -19,7 +19,7 @@ public class IndexWriter {
 
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
-   private MappedByteBuffer mappedByteBuffer_;
+
 
    public IndexWriter(String directory) throws IOException {
       directory += (directory.endsWith(File.separator) ? "" : File.separator);
@@ -31,7 +31,6 @@ public class IndexWriter {
       try {
          raFile_.setLength(INITIAL_FILE_SIZE);
          fileChannel_ = raFile_.getChannel();
-         mappedByteBuffer_ = fileChannel_.map(FileChannel.MapMode.READ_WRITE, 0, INITIAL_FILE_SIZE);
       } catch (IOException e) {
          SwingUtilities.invokeLater(new Runnable() {
             @Override
@@ -45,23 +44,14 @@ public class IndexWriter {
    }
 
    public void addEntry(IndexEntryData i) throws IOException {
-//      fileChannel_.write((ByteBuffer) i.asByteBuffer());
-      mappedByteBuffer_.put((ByteBuffer) i.asByteBuffer());
-      //TODO: might need t check for overflow if mem mapping
+      fileChannel_.write((ByteBuffer) i.asByteBuffer());
    }
 
-public void finishedWriting()  {
-   try {
-//      int writtenLength = (int) fileChannel_.position();
-      int writtenLength = (int) mappedByteBuffer_.position();
+public void finishedWriting() throws IOException {
+      int writtenLength;
+      writtenLength = (int) fileChannel_.position();
       raFile_.setLength(writtenLength);
-      fileChannel_.close();
-//      raFile_.setLength(mappedByteBuffer_.position());
       raFile_.close();
-   } catch (IOException ex) {
-      ex.printStackTrace();
-      throw new RuntimeException(ex);
-   }
 }
 
 }

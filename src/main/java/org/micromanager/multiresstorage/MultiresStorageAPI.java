@@ -28,7 +28,8 @@ public interface MultiresStorageAPI extends StorageAPI{
 
    /**
     * Add an image into storage, which corresponds to a particular row/column in
-    * a larger stitched image. Must have entries for "row" and "column" in axes
+    * a larger stitched image. Must have entries for "row" and "column" in axes.
+    * Blocks if writing queue is full
     * @param ti
     * @param axes
     * @param rgb
@@ -37,7 +38,7 @@ public interface MultiresStorageAPI extends StorageAPI{
     * @return
     */
    public Future putImageMultiRes(TaggedImage ti, HashMap<String, Integer> axes,
-                           boolean rgb, int imageHeight, int imageWidth);
+                           boolean rgb, int imageHeight, int imageWidth) ;
 
    /**
     * return number of resolutions of the multiresolution pyramid
