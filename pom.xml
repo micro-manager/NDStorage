@@ -2,8 +2,14 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.micro-manager.ndtiffstorage</groupId>
     <artifactId>NDTiffStorage</artifactId>
-    <version>2.4.0</version>
+    <version>2.4.4</version>
     <packaging>jar</packaging>
+    <name>NDTiff Storage file format</name>
+    <description>Java-based writer and reader used for NDTiffStorage format</description>
+    <url>https://github.com/micro-manager/NDTiffStorage</url>
+
+
+
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
@@ -23,6 +29,21 @@
        </developer>
     </developers>
 
+   <scm>
+      <url>https://github.com/micro-manager/NDTiffStorage</url>
+    <connection>scm:git:git://github.com/micro-manager/NDTiffStorage.git</connection>
+    <developerConnection>scm:git:git@github.com:micro-manager/NDTiffStorage.git</developerConnection>
+   </scm>
+
+   
+   <licenses>
+      <license>
+         <name>BSD-3</name>
+         <url>https://github.com/micro-manager/NDTiffStorage/blob/master/LICENSE</url>
+       </license>
+   </licenses>
+
+<!-- 
     <repositories>
        <repository>
            <snapshots>
@@ -32,15 +53,20 @@
            <name>bintray</name>
            <url>https://dl.bintray.com/micro-manager/micro-manager</url>
        </repository>
-    </repositories>
+    </repositories> -->
+
 
 	<dependencies>
 		<dependency>
 			<groupId>org.micro-manager.mmcorej</groupId>
 			<artifactId>MMCoreJ</artifactId>
-			<version>10.1.0.0</version>
+			<version>10.1.1.0</version>
 		</dependency>
 	</dependencies>
+
+
+
+<!-- 
    <build>
        <plugins>
           <plugin>
@@ -71,16 +97,77 @@
           </plugin>
        </plugins>
     </build>
-   <distributionManagement>
-      <repository>
-         <id>bintray-micro-manager</id>
-         <name>micro-manager-ndviewer</name>
-         <url>https://api.bintray.com/maven/micro-manager/micro-manager/NDTiffStorage/;publish=1</url>
-      </repository>
+ -->
+
+
+    <build>
+      <plugins>
+       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.2.1</version>
+        <executions>
+         <execution>
+          <id>attach-sources</id>
+          <goals>
+           <goal>jar-no-fork</goal>
+          </goals>
+         </execution>
+        </executions>
+       </plugin>
+       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+         <execution>
+          <id>attach-javadocs</id>
+          <goals>
+           <goal>jar</goal>
+          </goals>
+         </execution>
+        </executions>
+       </plugin>
+       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>1.5</version>
+        <executions>
+         <execution>
+          <id>sign-artifacts</id>
+          <phase>verify</phase>
+          <goals>
+           <goal>sign</goal>
+          </goals>
+         </execution>
+        </executions>
+       </plugin>
+      </plugins>
+     </build>
+
+
+
+    <distributionManagement>
       <snapshotRepository>
-         <id>jfrog-snapshots</id>
-         <url>http://oss.jfrog.org/artifactory/oss-snapshot-local</url>
+        <id>ossrh</id>
+        <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
       </snapshotRepository>
+      <repository>
+        <id>ossrh</id>
+        <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+      </repository>
    </distributionManagement>
+
+
+<!--     <distributionManagement>
+      <snapshotRepository>
+       <id>ossrh</id>
+       <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+      </snapshotRepository>
+      <repository>
+       <id>ossrh</id>
+       <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+      </repository>
+     </distributionManagement> -->
 
 </project>
