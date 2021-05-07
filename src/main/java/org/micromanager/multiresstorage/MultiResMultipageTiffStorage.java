@@ -988,7 +988,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             if (!loaded_) {
                while (true) {
                   try {
-                     if (!writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) break;
+                     if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) break;
                   } catch (InterruptedException e) {
                      throw new RuntimeException(e);
                   }

@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.micro-manager.ndtiffstorage</groupId>
     <artifactId>NDTiffStorage</artifactId>
-    <version>2.4.5</version>
+    <version>2.4.6</version>
     <packaging>jar</packaging>
     <name>NDTiff Storage file format</name>
     <description>Java-based writer and reader used for NDTiffStorage format</description>
@@ -43,18 +43,6 @@
        </license>
    </licenses>
 
-<!-- 
-    <repositories>
-       <repository>
-           <snapshots>
-               <enabled>false</enabled>
-           </snapshots>
-           <id>bintray-micro-manager</id>
-           <name>bintray</name>
-           <url>https://dl.bintray.com/micro-manager/micro-manager</url>
-       </repository>
-    </repositories> -->
-
 
 	<dependencies>
 		<dependency>
@@ -63,41 +51,6 @@
 			<version>10.1.1.0</version>
 		</dependency>
 	</dependencies>
-
-
-
-<!-- 
-   <build>
-       <plugins>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <version>3.2.1</version>
-            <executions>
-              <execution>
-                <id>attach-sources</id>
-                <goals>
-                  <goal>jar-no-fork</goal>
-                </goals>
-              </execution>
-            </executions>
-         </plugin>
-         <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>3.2.0</version>
-            <executions>
-              <execution>
-                <id>attach-javadocs</id>
-                <goals>
-                  <goal>jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-       </plugins>
-    </build>
- -->
 
 
     <build>
@@ -169,16 +122,5 @@
       </repository>
    </distributionManagement>
 
-
-<!--     <distributionManagement>
-      <snapshotRepository>
-       <id>ossrh</id>
-       <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-      </snapshotRepository>
-      <repository>
-       <id>ossrh</id>
-       <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-      </repository>
-     </distributionManagement> -->
 
 </project>
