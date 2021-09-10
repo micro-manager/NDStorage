@@ -59,7 +59,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private final JSONObject summaryMD_;
    private JSONObject displaySettings_;
    private int xOverlap_, yOverlap_;
-   private int fullResTileWidthIncludingOverlap_, fullResTileHeightIncludingOverlap_;
+   private int fullResTileWidthIncludingOverlap_ = -1, fullResTileHeightIncludingOverlap_ = -1;
    private int tileWidth_, tileHeight_; //Indpendent of zoom level because tile sizes stay the same--which means overlap is cut off
    private volatile boolean finished_;
    private String uniqueAcqName_;
@@ -74,6 +74,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private LinkedBlockingQueue<Runnable> writingTaskQueue_;
    private LinkedBlockingQueue<ImageWrittenListener> imageWrittenListeners_ = new LinkedBlockingQueue<ImageWrittenListener>();
 
+   private boolean firstImageAdded_ = false;
    //Assume that these are constant over the dataset for dipslay purposes, though they dont neccessarily need to be for storage
    private boolean rgb_;
    private int byteDepth_;
@@ -157,17 +158,13 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     * Constructor for new storage that doesn't parse summary metadata
     */
    public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
-           int overlapX, int overlapY, int width, int height, boolean tiled,
+           int overlapX, int overlapY, boolean tiled,
                               Integer externalMaxResLevel, int savingQueueSize,
                                        Consumer<String> debugLogger) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
       yOverlap_ = overlapY;
-      fullResTileWidthIncludingOverlap_ = width;
-      fullResTileHeightIncludingOverlap_ = height;
-      tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
-      tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       prefix_ = name;
       debugLogger_ = debugLogger;
 
@@ -739,6 +736,14 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 //
 //      }
 
+      if (!firstImageAdded_) {
+         firstImageAdded_ = true;
+         fullResTileWidthIncludingOverlap_ = imageWidth;
+         fullResTileHeightIncludingOverlap_ = imageHeight;
+         tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
+         tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
+      }
+
       rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
@@ -802,6 +807,16 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    @Override
    public Future putImageMultiRes( TaggedImage ti, final HashMap<String, Integer> axes,
                                   boolean rgb, int imageHeight, int imageWidth) {
+      if (!firstImageAdded_) {
+         //technically this doesnt need to be parsed here, because it should be fixed for the whole
+         //dataset, NOT interpretted at runtime, but whatever
+         firstImageAdded_ = true;
+         fullResTileWidthIncludingOverlap_ = imageWidth;
+         fullResTileHeightIncludingOverlap_ = imageHeight;
+         tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
+         tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
+      }
+
       rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
