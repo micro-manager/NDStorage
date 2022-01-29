@@ -60,7 +60,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    private JSONObject displaySettings_;
    private int xOverlap_, yOverlap_;
    private int fullResTileWidthIncludingOverlap_ = -1, fullResTileHeightIncludingOverlap_ = -1;
-   private int tileWidth_, tileHeight_; //Indpendent of zoom level because tile sizes stay the same--which means overlap is cut off
+   private int tileWidth_ = -1, tileHeight_ = -1; //Indpendent of zoom level because tile sizes stay the same--which means overlap is cut off
    private volatile boolean finished_;
    private String uniqueAcqName_;
    private ExecutorService writingExecutor_;
@@ -265,6 +265,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    public int[] getImageBounds() {
       if (!tiled_) {
          return new int[]{0, 0, fullResTileWidthIncludingOverlap_, fullResTileHeightIncludingOverlap_};
+      }
+      if (tileWidth_ == -1 || tileHeight_ == -1) {
+         return null;
       }
       if (!loaded_) {
          return new int[]{0, 0, getNumCols() * tileWidth_, getNumRows() * tileHeight_};
