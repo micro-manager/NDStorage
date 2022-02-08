@@ -94,7 +94,7 @@
            <goal>sign</goal>
           </goals>
 		 
-			 <configuration>
+		<configuration>
              	<gpgArguments>
 			<arg>--pinentry-mode</arg>
 			<arg>loopback</arg>
