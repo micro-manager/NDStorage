@@ -7,4 +7,9 @@ public interface ImageWrittenListener {
 
    public void imageWritten(IndexEntryData ied);
 
+   /**
+    * Block until this listenter is shut down and all its resources freed
+    */
+   public void awaitCompletion();
+
 }
