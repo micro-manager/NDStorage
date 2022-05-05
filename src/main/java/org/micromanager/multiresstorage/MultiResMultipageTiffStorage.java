@@ -19,6 +19,8 @@ package org.micromanager.multiresstorage;
 import java.awt.Point;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -762,6 +764,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             throw new RuntimeException(e);
          }
       }
+      if (debugLogger_ != null) {
+         debugLogger_.accept("waiting for writing task queue complete");
+      }
 
       Object pixels = ti.pix;
       byte[] metadata = ti.tags.toString().getBytes();
@@ -779,11 +784,30 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
             imageAxes_.add(axes);
 
+            if (debugLogger_ != null) {
+               debugLogger_.accept("putting image in storage");
+            }
             //write to full res storage as normal (i.e. with overlap pixels present)
             IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadata,
                     rgb, imageHeight, imageWidth);
+
+            if (debugLogger_ != null) {
+               debugLogger_.accept("notifying image written listeners");
+            }
             for (ImageWrittenListener l : imageWrittenListeners_) {
-               l.imageWritten(ied);
+               try {
+                  l.imageWritten(ied);
+               } catch (Exception e) {
+                  // a failure in one of these shouldn't mess up the whole thin
+                  if (debugLogger_ != null) {
+                     StringWriter sw = new StringWriter();
+                     PrintWriter pw = new PrintWriter(sw);
+                     e.printStackTrace(pw);
+                     debugLogger_.accept(sw.toString());
+                  } else {
+                     e.printStackTrace();
+                  }
+               }
             }
 
          } catch (IOException ex) {
