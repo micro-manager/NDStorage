@@ -800,6 +800,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                } catch (Exception e) {
                   // a failure in one of these shouldn't mess up the whole thin
                   if (debugLogger_ != null) {
+                     debugLogger_.accept("Image written listener exception");
                      StringWriter sw = new StringWriter();
                      PrintWriter pw = new PrintWriter(sw);
                      e.printStackTrace(pw);
