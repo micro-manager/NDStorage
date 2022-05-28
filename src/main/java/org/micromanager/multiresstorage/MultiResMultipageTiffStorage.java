@@ -125,10 +125,11 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       byteDepth_ = fullResStorage_.getImage(IndexEntryData.serializeAxes(
               imageAxes_.iterator().next())).pix instanceof byte[] ? 1 : 2;
 
-      //Only valid for stitched datasets
+      //read width from the first image, to allow for datasets with different widths/heights per image
+      // Even though this won't be allowed for tiled datasets
+      fullResTileHeightIncludingOverlap_ = fullResStorage_.getFirstImageHeight();
+      fullResTileWidthIncludingOverlap_ = fullResStorage_.getFirstImageWidth();
       if (tiled_) {
-         fullResTileWidthIncludingOverlap_ = StorageMD.getFullResTileWidth(summaryMD_);
-         fullResTileHeightIncludingOverlap_ = StorageMD.getFullResTileWidth(summaryMD_);
          xOverlap_ = StorageMD.getPixelOverlapX(summaryMD_);
          yOverlap_ = StorageMD.getPixelOverlapY(summaryMD_);
          tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
@@ -148,9 +149,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             resIndex++;
          }
       } else {
-         //read width from the first image
-         fullResTileHeightIncludingOverlap_ = fullResStorage_.getFirstImageHeight();
-         fullResTileWidthIncludingOverlap_ = fullResStorage_.getFirstImageWidth();
          tileHeight_ = fullResTileHeightIncludingOverlap_;
          tileWidth_ = fullResTileWidthIncludingOverlap_;
       }
@@ -193,8 +191,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          if (tiled) {
             StorageMD.setPixelOverlapX(summaryMD_, xOverlap_);
             StorageMD.setPixelOverlapY(summaryMD_, yOverlap_);
-            StorageMD.setFullResTileWidth(summaryMD_, fullResTileWidthIncludingOverlap_);
-            StorageMD.setFullResTileHeight(summaryMD_, fullResTileHeightIncludingOverlap_);
          }
          StorageMD.setTiledStorage(summaryMD_, tiled_);
       } catch (JSONException ex) {

@@ -11,65 +11,17 @@ import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
 /**
- *
+ * This class exists so that important information is not passed in secrectly through summary meteadata, buth
+ * rather explicity through constructors. Then the constructors add it into the metadata so that it can be loaded
  * @author henrypinkard
  */
 class StorageMD {
 
-   private static final String CHANNEL_NAME = "Channel";
    private static final String AXES = "Axes";
-   private static final String GRID_COL = "GridColumnIndex";
-   private static final String GRID_ROW = "GridRowIndex";
    private static final String OVERLAP_X = "GridPixelOverlapX";
    private static final String OVERLAP_Y = "GridPixelOverlapY";
-   private static final String FULL_RES_TILE_HEIGHT = "FullResTileHeight";
-   private static final String FULL_RES_TILE_WIDTH = "FullResTileWidth";
    private static final String TILED_STORAGE = "TiledImageStorage";
 
-
-   static void setGridRow(JSONObject smd, long gridRow) {
-      try {
-         smd.put(GRID_ROW, gridRow);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Couldnt set grid row");
-
-      }
-   }
-
-   static void setGridCol(JSONObject smd, long gridCol) {
-      try {
-         smd.put(GRID_COL, gridCol);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Couldnt set grid row");
-
-      }
-   }
-
-   static long getGridRow(JSONObject smd) {
-      try {
-         return smd.getLong(GRID_ROW);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Couldnt set grid row");
-
-      }
-   }
-
-   static long getGridCol(JSONObject smd) {
-      try {
-         return smd.getLong(GRID_COL);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Couldnt set grid row");
-
-      }
-   }
-
-   public static String getChannelName(JSONObject map) {
-      try {
-         return map.getString(CHANNEL_NAME);
-      } catch (JSONException ex) {
-         throw new RuntimeException("Missing channel index tag");
-      }
-   }
 
    static HashMap<String, Integer> getAxes(JSONObject tags) {
       try {
@@ -136,35 +88,4 @@ class StorageMD {
       }
    }
 
-   public static void setFullResTileWidth(JSONObject summaryMD_, int fullResTileWidthIncludingOverlap_) {
-      try {
-         summaryMD_.put(FULL_RES_TILE_WIDTH, fullResTileWidthIncludingOverlap_);
-      } catch (JSONException ex) {
-         throw new RuntimeException(ex);
-      }
-   }
-
-   public static void setFullResTileHeight(JSONObject summaryMD_, int fullResTileHeightIncludingOverlap_) {
-      try {
-         summaryMD_.put(FULL_RES_TILE_HEIGHT, fullResTileHeightIncludingOverlap_);
-      } catch (JSONException ex) {
-         throw new RuntimeException(ex);
-      }
-   }
-
-   public static int getFullResTileWidth(JSONObject summaryMD) {
-      try {
-         return summaryMD.getInt(FULL_RES_TILE_WIDTH);
-      } catch (JSONException ex) {
-         throw new RuntimeException(ex);
-      }
-   }
-
-   public static int getFullResTileHeight(JSONObject summaryMD) {
-      try {
-         return summaryMD.getInt(FULL_RES_TILE_HEIGHT);
-      } catch (JSONException ex) {
-         throw new RuntimeException(ex);
-      }
-   }
 }
