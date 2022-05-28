@@ -6,7 +6,9 @@ name: Maven_depolyment
 on:
   push:
     branches:
-      - master
+      - main
+    paths:
+      - 'pom.xml'
 
 jobs:
   release:
