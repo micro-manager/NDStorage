@@ -44,6 +44,8 @@ The individual TIFF files are standard TIFF files, with the addition of a specia
 
 *4 bytes*: 32-bit integer containing major version (added in v1.0)
 
+*4 bytes*: 32-bit integer containing minor version (added in v3.0)
+
 *4 bytes*: 32-bit integer containing Summary metadata header, 2355492 
 
 *4 bytes*: 32-bit integer contianing K, the length of the summary metadata
