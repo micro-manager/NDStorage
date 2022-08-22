@@ -1,8 +1,7 @@
 name: Reader tests
 
 
-on: pull_request
-    push
+on: [pull_request, push]
 
 # Cancel actions when new commits are pushed to PR
 concurrency: 
@@ -20,7 +19,7 @@ jobs:
         os: [
           ubuntu-lastest,
           windows-latest,
-          macos-11,
+          macos-11
         ]
     steps:
       - uses: actions/checkout@v2
