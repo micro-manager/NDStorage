@@ -2,6 +2,7 @@ import numpy as np
 from ndtiff import Dataset
 import os
 
+print('Hello I am here')
 print(os.getcwd())
 
 test_data_path = './'
