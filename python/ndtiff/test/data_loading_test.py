@@ -2,8 +2,7 @@ import numpy as np
 from ndtiff import Dataset
 import os
 
-print('Hello I am here')
-print(os.getcwd())
+raise Exception('I am here ' + os.getcwd())
 
 test_data_path = './'
 
