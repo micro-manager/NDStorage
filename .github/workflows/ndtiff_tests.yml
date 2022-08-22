@@ -1,12 +1,12 @@
 name: Reader tests
 
 
-on: pull_request
+on: [pull_request, push]
 
-# Cancel actions when new commits are pushed to PR
-concurrency: 
-    group: ${{ github.head_ref }}
-    cancel-in-progress: true
+# # Cancel actions when new commits are pushed to PR
+# concurrency: 
+#     group: ${{ github.head_ref }}
+#     cancel-in-progress: true
 
 
 jobs:
@@ -15,11 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9, 3.10]
+        python-version: [3.7, 3.8, 3.9]
         os: [
           ubuntu-lastest,
           windows-latest,
-          macos-11,
+          macos-11
         ]
     steps:
       - uses: actions/checkout@v2
@@ -30,8 +30,8 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .[test]
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install ./python/[test]
+          pip install -r python/requirements.txt
 
       - name: Tests
         run: |

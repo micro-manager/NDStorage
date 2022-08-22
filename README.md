@@ -1,26 +1,36 @@
 # NDTiffStorage
-NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and [Pycro-Manager](https://github.com/micro-manager/pycro-manager). The Java code for reading and writing these datasets is in this repository, and the [Python reader](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data) can be found in Pycro-Manager.
+NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Pycro-Manager](https://github.com/micro-manager/pycro-manager) and [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and is one of three available options in Micro-Manager. This repository contains Java code for reading/writing these files, as well as python code (the [`ndtiff`](https://pypi.org/project/ndtiff/) package) for reading them. Instructions on how to use the python readers can be found in the [Pycro-Manager documentation](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data).
 
-It makes use of the portability of TIFF specification to be used across many applications, while also providing additional features that enable fast writing and reading of multi-Terabyte datasets in which images are indexed along arbitrary, N-dimensional axes (e.g. `{'time': 1, 'channel': 2}`). It is designed for flexibility, making no assumptions about the order or absecnce/presence of particular axis keys, and it allows for images of multiple sizes, bytes per pixel and RGB/grayscale in the same file. 
+## Rationale
+The NDTiff library is optmized for size, speed, and flexibility. Several optimizations are in place to to achieve high-performance in each category.
 
-On top of this, it provides optional features to save data as a multiresolution pyramid. By laying out images in a 2D grid, large multiresolution pyramids can be generated that span multiple fields of view.
+**Size**. In a traditional TIFF, the locations of the the pixels of each image are stored in headers (called "Image File Directories") that are dispersed throughout the file. The leads to major performance bottlenecks on large files, since identifying the location of a particular image may rquire scanning through many headers dispersed throughout the file. To avoid this limitation, NDTiff writes a seperate `NDTiff.index` which contains the locations an essential metadata of each image over one or more TIFF files. This enables the entire dataset to be queried and individual images retrieved extremely quickly. Because of presence of this index, the native TIFF headers are not strictly neccessary, however, they do allow the datasets to be opened (less efficiently) by standard TIFF readers, as well as recovery mechanism in case of loss of the index file.
 
-## Specification for NDTiff v2
+**Speed**. One of the major performance bottlenecks for streaming data to disk at high speeds is the creation of new files. Each time this happens, there is a performance penalty from making operating system calls. Thus, speed can be increased by putting many images into the same file. NDTiff uses individual TIFFs of 4GB apiece (the maxmimum allowable TIFF size), along with many internal optimzations to increase the speed with which data can be written.
 
-### Directory layout
-The directory layout structure of an NDTiff dataset is as follows:
+**Flexibility**. NDTiff does not assume any particular model of the dataset, aside from the fact that it can be broken into multiple 2D images. Each 2D image is indexed by a position along one or more axes (e.g. `{'time': 1, 'channel': 2}`). The choice of number of axes is arbitrary and up to the user. This means the format can equally well store many modalities that use multiple images including 3D data, time series, hyperspectral data, high-dyanmic range, etc.
+
+
+## Multi-resolution pyramids
+An additional feature of this library is the use [multi-resoltion pyramids](https://en.wikipedia.org/wiki/Pyramid_%28image_processing%29). Having the data in this form is very useful for image processing and visualzation of extremely large images, because the data can be visualized/analyzed at multiple scales without having to pull the entire, full-resolution image into memory. This is implemented by using multiple parallel NDTiffStorage datasets, each of which corresponds to one resolution level. It assumes multiple images are laid out in regular an XY grid, and downsamples along these X and Y dimensions.
+
+# Specification for NDTiff v3.x
+
+NDTiff datasets are a folder that comprises three types of files:
+
 ```
-
-└── Full resolution
-│   ├── NDTiff.index
-│   ├── {name}_NDTiffStack.tif
-│   └── {name}_NDTiffStack_1.tif
+├── NDTiff.index
+├── {name}_NDTiffStack.tif
+├── {name}_NDTiffStack_1.tif
 └── display_settings.txt
-
 ```
-Without the optional multiresolution features turned on, all the data will be contained in a folder called `Full resolution`. Datasets over 4GB will contain multiple TIFF files, since the TIFF specification maxes out at 4GB per file. Succesive files will have numbers appended to the end (e.g. `_1`, `_2`, ...)
 
-If the multi-resolution pyramid features are being used, this directory structure will be repeated with a new folder for each resolution level of the pyramid:
+The `NDTiff.index` file contains information about where all the different images live in each file and what their keys are (e.g. `{'time': 1, 'channel': 2}`). The `{name}_NDTiffStack.tif` contains image data and metadata. Datasets over 4GB will contain multiple TIFF files, since the TIFF specification maxes out at 4GB per file. Succesive files will have numbers appended to the end (e.g. `_1`, `_2`, ...). Each image has one corresponding JSON object containing metadata, and there is one "summary metadata" JSON object that describes the whole dataset. The summary metadata object is replicated across each file. `display_settings.txt` is an optinal JSON file containg contrast and display settings, with no particular assumed structure.
+
+
+## Multi-resolution pyramid
+The multi-resolution pyramid versions of the files are essentially series of individual NDTiff datasets, each of which has been downsampled by a factor of 2 along XY:
+
 ```
 ├── Downsampled_x4
 │   ├── NDTiff.index
@@ -34,7 +44,7 @@ If the multi-resolution pyramid features are being used, this directory structur
 └── display_settings.txt
 ```
 
-#### Structure within each TIFF file
+### Structure within each TIFF file
 
 The individual TIFF files are standard TIFF files, with the addition of a specialized header:
 
@@ -44,7 +54,7 @@ The individual TIFF files are standard TIFF files, with the addition of a specia
 
 *4 bytes*: 32-bit integer containing major version (added in v1.0)
 
-*4 bytes*: 32-bit integer containing minor version (added in v3.0)
+*4 bytes*: 32-bit integer containing minor version **(added in v3.0)**
 
 *4 bytes*: 32-bit integer containing Summary metadata header, 2355492 
 
@@ -84,6 +94,11 @@ The index file is what enables the formats fast performance. Since a vanilla Tif
 
 This file is optional, and contains settings for displaying the data contained within the file (colormaps, contrast settings, etc.). No particular form is assumed, other than it is all contained in JSON.
 
+
+## Differences from version 2
+
+1. In version 2 NDTiff files, even when not using multi-resolution pyramid features, the data were in a `Full resolution` directory. In v3.0 this was eliminated in favor of putting them directly in the top level directory
+2. An additional 4 bytes was added to bytes 16-20 of the header of each file containing the minor version of the format, thereby shifting back the summary metadata and it's header by 4 bytes
 
 ## (DEPRECATED) Specification for NDTiff v1 and earlier
 
