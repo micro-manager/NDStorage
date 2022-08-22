@@ -5,7 +5,7 @@ It makes use of the portability of TIFF specification to be used across many app
 
 On top of this, it provides optional features to save data as a multiresolution pyramid. By laying out images in a 2D grid, large multiresolution pyramids can be generated that span multiple fields of view.
 
-## Specification for NDTiff 
+## Specification for NDTiff v2
 
 ### Directory layout
 The directory layout structure of an NDTiff dataset is as follows:
