@@ -1,19 +1,37 @@
 import numpy as np
 from ndtiff import Dataset
+import os
 
-data_path = "/Users/henrypinkard/Desktop/ndtiffv2.0_test"
-# data_path = "/Users/henrypinkard/Desktop/ndtiffv2.0_stitched_test"
+print(os.getcwd())
 
-# open the dataset
-dataset = Dataset(data_path)
+test_data_path = './'
 
-# read tiles or tiles + metadata by channel, slice, time, and position indices
-# img is a numpy array and md is a python dictionary
-# img, img_metadata = dataset.read_image(l=10, read_metadata=True)
+def test_v2_data():
+    data_path = test_data_path + "ndtiffv2.0_test"
+    dataset = Dataset(data_path)
+    assert(np.mean(dataset.as_array()) > 0)
 
-dask_array = dataset.as_array(stitched=False)
-print(np.array(dask_array))
+def test_v3_data():
+    data_path = test_data_path + 'ndtiffv3.0_test'
+    dataset = Dataset(data_path)
+    assert(np.mean(dataset.as_array()) > 0)
 
-pass
+def test_v2_stitched_data():
+    data_path = test_data_path + "ndtiffv2.0_stitched_test"
+    dataset = Dataset(data_path)
+    stitched = np.array(dataset.as_array(stitched=True))
+    assert(stitched[..., 0, 0] > 0)
+    assert(stitched[..., -1, -1] > 0)
+    assert(stitched[..., 0, -1] == 0)
+    assert(stitched[..., -1, 0] == 0)
 
-#TODO: Generate new type datasets and write a few automated tests of key features
+def test_v3_stitched_data():
+    data_path = test_data_path + 'ndtiffv3.0_stitched_test'
+    dataset = Dataset(data_path)
+    stitched = np.array(dataset.as_array(stitched=True))
+    assert(stitched[..., 0, 0] > 0)
+    assert(stitched[..., -1, -1] > 0)
+    assert(stitched[..., 0, -1] == 0)
+    assert(stitched[..., -1, 0] == 0)
+
+
