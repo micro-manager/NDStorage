@@ -3,10 +3,10 @@ name: Reader tests
 
 on: [pull_request, push]
 
-# Cancel actions when new commits are pushed to PR
-concurrency: 
-    group: ${{ github.head_ref }}
-    cancel-in-progress: true
+# # Cancel actions when new commits are pushed to PR
+# concurrency: 
+#     group: ${{ github.head_ref }}
+#     cancel-in-progress: true
 
 
 jobs:
