@@ -189,8 +189,19 @@ public class NDTiffReader {
 
    private JSONObject readSummaryMD() {
       try {
+         //Read the major version number of the format. V3 and beyond shifts the start
+         //of summary metadata by 4 bytes, so allow for storing the minor version as well
+         ByteBuffer version = ByteBuffer.allocate(4).order(byteOrder_);
+         fileChannel_.read(version, 12);
+         int majorVersion = version.getInt(0);
+         int offset = 0;
+         if (majorVersion >= 3) {
+            offset = 4;
+         }
+
          ByteBuffer mdInfo = ByteBuffer.allocate(8).order(byteOrder_);
-         fileChannel_.read(mdInfo, 20);
+
+         fileChannel_.read(mdInfo, 16 + offset);
          int header = mdInfo.getInt(0);
          int length = mdInfo.getInt(4);
          
@@ -199,7 +210,7 @@ public class NDTiffReader {
          }
 
          ByteBuffer mdBuffer = ByteBuffer.allocate(length).order(byteOrder_);
-         fileChannel_.read(mdBuffer, 28);
+         fileChannel_.read(mdBuffer, 24 + offset);
          JSONObject summaryMD = new JSONObject(getString(mdBuffer));
 
          return summaryMD;
