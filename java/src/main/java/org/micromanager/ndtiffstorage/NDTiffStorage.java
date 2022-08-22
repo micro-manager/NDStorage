@@ -93,6 +93,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    private volatile boolean discardData_ = false;
 
+   private int detectedMajorVersion_;
+
    /**
     * Constructor to load existing storage from disk dir --top level saving
     * directory
@@ -103,7 +105,25 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       directory_ = dir;
       finished_ = true;
       pooledBuffers_ = null;
-      String fullResDir = dir + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
+
+      dir += (dir.endsWith(File.separator) ? "" : File.separator);
+      // Differentiate between NDTiff v2 and v3 here.
+      if (dir.endsWith(FULL_RES_SUFFIX + File.separator) ) {
+         // The wrong one was selected
+         dir = new File(dir).getParent() + File.separator;
+      }
+
+      String fullResDir;
+      // First check if there is a "Full resolution" directory present.
+      if (! new File(dir + FULL_RES_SUFFIX).exists()) {
+         // It must be an NDTiff v3 non-multiresolution
+         fullResDir = dir;
+         detectedMajorVersion_ = 3;
+      } else {
+         fullResDir = dir + FULL_RES_SUFFIX;
+      }
+
+
       //create fullResStorage
       fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null);
       summaryMD_ = fullResStorage_.getSummaryMetadata();
