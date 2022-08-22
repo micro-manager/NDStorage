@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import java.io.*;
 import java.nio.*;
@@ -33,9 +33,23 @@ import mmcorej.org.json.JSONObject;
 
 import javax.swing.*;
 
-public class MultipageTiffWriter {
+public class NDTiffWriter {
 
-   private static final int MAJOR_VERSION = 2;
+   private static final int MAJOR_VERSION;
+   private static final int MINOR_VERSION;
+   //Extract Major and minor versions from file
+   static {
+      InputStream is = ClassLoader.getSystemResourceAsStream("FORMAT_VERSION");
+      Scanner myReader = new Scanner(is);
+      String version = "";
+      while (myReader.hasNextLine()) {
+         version = myReader.nextLine();
+      }
+      myReader.close();
+      String[] subs  = version.split("\\.");
+      MAJOR_VERSION = Integer.parseInt(subs[0]);
+      MINOR_VERSION = Integer.parseInt(subs[1]);
+   }
 
 //   private static final long BYTES_PER_MEG = 1048576;
 //   private static final long MAX_FILE_SIZE = 15*BYTES_PER_MEG;
@@ -62,7 +76,7 @@ public class MultipageTiffWriter {
    public static final int SUMMARY_MD_HEADER = 2355492;
 
 
-   private MultiResMultipageTiffStorage masterMPTiffStorage_;
+   private NDTiffStorage masterMPTiffStorage_;
    private RandomAccessFile raFile_;
    private FileChannel fileChannel_;
    private ConcurrentHashMap<String, IndexEntryData> indexMap_;
@@ -72,7 +86,7 @@ public class MultipageTiffWriter {
    private LinkedList<ByteBuffer> buffers_;
    private boolean firstIFD_ = true;
    //Reader associated with this file
-   private MultipageTiffReader reader_;
+   private NDTiffReader reader_;
    private final String filename_;
    private volatile boolean displayStorer_;
 
@@ -82,11 +96,12 @@ public class MultipageTiffWriter {
    private ArrayList<Long> writeTimes2 = new ArrayList<Long>();
 
 
-   public MultipageTiffWriter(String directory, String filename,
-           JSONObject summaryMD, MultiResMultipageTiffStorage mpTiffStorage) throws IOException {
+
+   public NDTiffWriter(String directory, String filename,
+                       JSONObject summaryMD, NDTiffStorage mpTiffStorage) throws IOException {
       displayStorer_ = false;
       masterMPTiffStorage_ = mpTiffStorage;
-      reader_ = new MultipageTiffReader(summaryMD);
+      reader_ = new NDTiffReader(summaryMD);
       File f = new File(directory + "/" + filename);
       filename_ = directory + "/" + filename;
 
@@ -160,7 +175,7 @@ public class MultipageTiffWriter {
       writeTimes2.add(e2-e1);
    }
 
-   public MultipageTiffReader getReader() {
+   public NDTiffReader getReader() {
       return reader_;
    }
 
@@ -172,7 +187,7 @@ public class MultipageTiffWriter {
       byte[] summaryMDBytes = getBytesFromString(summaryMD.toString());
       int mdLength = summaryMDBytes.length;
       //20 bytes
-      ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getSmallBuffer(24);
+      ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getSmallBuffer(28);
       //8 bytes for file header
       if (masterMPTiffStorage_.BYTE_ORDER.equals(ByteOrder.BIG_ENDIAN)) {
          headerBuffer.asCharBuffer().put(0, (char) 0x4d4d);
@@ -190,11 +205,12 @@ public class MultipageTiffWriter {
 
       //8 bytes for unique identifier and major version
       headerBuffer.putInt(8, 483729);
-      headerBuffer.putInt(12, MAJOR_VERSION); //major version
+      headerBuffer.putInt(12, MAJOR_VERSION);
+      headerBuffer.putInt(16, MINOR_VERSION);
 
       //8 bytes for summaryMD header  summary md length + 
-      headerBuffer.putInt(16, SUMMARY_MD_HEADER);
-      headerBuffer.putInt(20, mdLength);
+      headerBuffer.putInt(20, SUMMARY_MD_HEADER);
+      headerBuffer.putInt(24, mdLength);
 
 
       //1 byte for each byte of UTF-8-encoded summary md

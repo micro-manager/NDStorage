@@ -1,4 +1,4 @@
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
@@ -9,7 +9,6 @@ import java.io.RandomAccessFile;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
 import java.util.function.Consumer;
@@ -87,6 +86,10 @@ public class IndexEntryData {
          val += BIGGEST_INT_BIT;
       }
       return val;
+   }
+
+   public EssentialImageMetadata toEssentialImageMetadata() {
+      return new EssentialImageMetadata((int) pixWidth_, (int) pixHeight_, getByteDepth(), isRGB());
    }
 
    public static TreeMap<String, IndexEntryData> readIndexMap(File f) throws IOException {

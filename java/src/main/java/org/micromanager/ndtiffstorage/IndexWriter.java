@@ -1,13 +1,11 @@
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.HashSet;
 
 public class IndexWriter {
    /**

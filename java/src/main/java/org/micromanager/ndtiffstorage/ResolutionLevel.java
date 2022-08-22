@@ -19,8 +19,10 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
+import java.awt.*;
+import java.awt.geom.Rectangle2D;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -39,24 +41,26 @@ public final class ResolutionLevel {
    private String summaryMetadataString_ = null;
 
    //Map of image labels to file 
-   private ConcurrentHashMap<String, MultipageTiffReader> tiffReadersByLabel_;
+   private ConcurrentHashMap<String, NDTiffReader> tiffReadersByLabel_;
    private static boolean showProgressBars_ = true;
-   private final MultiResMultipageTiffStorage masterMultiResStorage_;
+   private final NDTiffStorage masterMultiResStorage_;
    private FileSet fileSet_;
    private String prefix_;
    private ConcurrentHashMap<String, TaggedImage> writePendingImages_
            = new ConcurrentHashMap<String, TaggedImage>();
+   private ConcurrentHashMap<String, EssentialImageMetadata> writePendingEssentialMetadata_
+           = new ConcurrentHashMap<String, EssentialImageMetadata>();
    private IndexWriter indexWriter_;
    private int firstImageWidth_, firstImageHeight_ = 0;
 
    public ResolutionLevel(String dir, boolean newDataSet, JSONObject summaryMetadata,
-                           MultiResMultipageTiffStorage masterMultiRes, String prefix) throws IOException {
+                          NDTiffStorage masterMultiRes, String prefix) throws IOException {
       masterMultiResStorage_ = masterMultiRes;
       prefix_ = prefix;
 
       newDataSet_ = newDataSet;
       directory_ = dir;
-      tiffReadersByLabel_ = new ConcurrentHashMap<String, MultipageTiffReader>();
+      tiffReadersByLabel_ = new ConcurrentHashMap<String, NDTiffReader>();
       setSummaryMetadata(summaryMetadata);
 
       if (!newDataSet_) {
@@ -77,29 +81,31 @@ public final class ResolutionLevel {
       }
    }
 
-   public void addToWritePendingImages(String identifier, TaggedImage ti) {
+   public void addToWritePendingImages(String identifier, TaggedImage ti, EssentialImageMetadata essMD) {
       writePendingImages_.put(identifier, ti);
+      writePendingEssentialMetadata_.put(identifier, essMD);
    }
 
    public void removePendingImage(String key) {
       writePendingImages_.remove(key);
+      writePendingEssentialMetadata_.remove(key);
    }
 
 
    private void openExistingDataSet() throws IOException {
       //Need to throw error if file not found
-      MultipageTiffReader reader = null;
+      NDTiffReader reader = null;
       File dir = new File(directory_);
       if (dir.listFiles() == null) {
          throw new RuntimeException("No files found");
       }
       TreeMap<String, IndexEntryData> indexMap = null;
-      TreeMap<String, MultipageTiffReader> readersByFilename = new TreeMap<>();
+      TreeMap<String, NDTiffReader> readersByFilename = new TreeMap<>();
       for (File f : dir.listFiles()) {
          if (f.getName().endsWith(".tif") || f.getName().endsWith(".TIF")) {
             try {
                //this is where fixing dataset code occurs
-               reader = new MultipageTiffReader(f);
+               reader = new NDTiffReader(f);
                readersByFilename.put(f.getName(), reader);
             } catch (IOException ex) {
                ex.printStackTrace();
@@ -137,11 +143,24 @@ public final class ResolutionLevel {
          return true;
       }
 
-      MultipageTiffReader reader = tiffReadersByLabel_.get(indexKey);
+      NDTiffReader reader = tiffReadersByLabel_.get(indexKey);
       if (reader != null) {
          return true;
       }
       return false;
+   }
+
+   public EssentialImageMetadata getEssentialImageMetadata(String indexKey) {
+      EssentialImageMetadata md = writePendingEssentialMetadata_.get(indexKey);
+      if (md != null) {
+         return md;
+      }
+
+      NDTiffReader reader = tiffReadersByLabel_.get(indexKey);
+      if (reader == null) {
+         return null;
+      }
+      return reader.readEssentialImageMetadata(indexKey);
    }
 
    public TaggedImage getImage(String indexKey) {
@@ -151,7 +170,7 @@ public final class ResolutionLevel {
          return image;
       }
 
-      MultipageTiffReader reader = tiffReadersByLabel_.get(indexKey);
+      NDTiffReader reader = tiffReadersByLabel_.get(indexKey);
       if (reader == null) {
          return null;
       }
@@ -187,7 +206,7 @@ public final class ResolutionLevel {
 
       if (fileSet_ == null) {
          try {
-            MultiResMultipageTiffStorage.createDir(directory_);
+            NDTiffStorage.createDir(directory_);
             fileSet_ = new FileSet(prefix_);
          } catch (Exception ex) {
             throw new RuntimeException(ex);
@@ -253,7 +272,7 @@ public final class ResolutionLevel {
     * Disposes of the tagged images in the imagestorage
     */
    public void close() {
-      for (MultipageTiffReader r : new HashSet<MultipageTiffReader>(tiffReadersByLabel_.values())) {
+      for (NDTiffReader r : new HashSet<NDTiffReader>(tiffReadersByLabel_.values())) {
          try {
             r.close();
          } catch (IOException ex) {
@@ -301,7 +320,7 @@ public final class ResolutionLevel {
    //Class encapsulating a single File (or series of files)
    private class FileSet {
 
-      private LinkedList<MultipageTiffWriter> tiffWriters_;
+      private LinkedList<NDTiffWriter> tiffWriters_;
       private FileWriter mdWriter_;
       private String baseFilename_;
       private String currentTiffFilename_;
@@ -313,14 +332,14 @@ public final class ResolutionLevel {
       int currentFrame_ = 0;
 
       public FileSet(String prefix) throws IOException {
-         tiffWriters_ = new LinkedList<MultipageTiffWriter>();
+         tiffWriters_ = new LinkedList<NDTiffWriter>();
 
          //get file path and name
          baseFilename_ = createBaseFilename(prefix);
          currentTiffFilename_ = baseFilename_ + ".tif";
          currentTiffUUID_ = "urn:uuid:" + UUID.randomUUID().toString();
          //make first writer
-         tiffWriters_.add(new MultipageTiffWriter(directory_, currentTiffFilename_,
+         tiffWriters_.add(new NDTiffWriter(directory_, currentTiffFilename_,
                  summaryMetadata_, masterMultiResStorage_));
       }
 //
@@ -355,13 +374,13 @@ public final class ResolutionLevel {
             }
       }
 
-      public MultipageTiffReader getCurrentReader() {
+      public NDTiffReader getCurrentReader() {
          return tiffWriters_.getLast().getReader();
       }
 
       public void overwritePixels(String identifier, Object pixels, boolean rgb) throws IOException {
          ArrayList<Future> list = new ArrayList<Future>();
-         for (MultipageTiffWriter w : tiffWriters_) {
+         for (NDTiffWriter w : tiffWriters_) {
             if (w.getIndexMap().containsKey(identifier)) {
                w.overwritePixels(identifier, pixels, rgb);
             }
@@ -388,7 +407,7 @@ public final class ResolutionLevel {
                currentTiffFilename_ = baseFilename_ + "_" + tiffWriters_.size() + ".tif";
                currentTiffUUID_ = "urn:uuid:" + UUID.randomUUID().toString();
                try {
-                  tiffWriters_.add(new MultipageTiffWriter(directory_, currentTiffFilename_,
+                  tiffWriters_.add(new NDTiffWriter(directory_, currentTiffFilename_,
                           summaryMetadata_, masterMultiResStorage_));
                   if (masterMultiResStorage_.debugLogger_ != null) {
                      masterMultiResStorage_.debugLogger_.accept("Constructed new file");

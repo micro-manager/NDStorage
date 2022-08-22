@@ -1,6 +1,7 @@
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import mmcorej.TaggedImage;
+import mmcorej.org.json.JSONObject;
 
 import java.awt.*;
 import java.util.HashMap;
@@ -17,7 +18,7 @@ import java.util.concurrent.Future;
  * is an implementation detail of the underlying classes
  *
  */
-public interface MultiresStorageAPI extends StorageAPI{
+public interface MultiresNDTiffAPI extends NDTiffAPI {
 
    /**
     * Get a set of the (row, col) indices at which data has been acquired at this
@@ -30,15 +31,16 @@ public interface MultiresStorageAPI extends StorageAPI{
     * Add an image into storage, which corresponds to a particular row/column in
     * a larger stitched image. Must have entries for "row" and "column" in axes.
     * Blocks if writing queue is full
-    * @param ti
+    * @param pixels
+    * @param metadata
     * @param axes
     * @param rgb
     * @param imageHeight
     * @param imageWidth
     * @return
     */
-   public Future putImageMultiRes(TaggedImage ti, HashMap<String, Integer> axes,
-                           boolean rgb, int imageHeight, int imageWidth) ;
+   public Future putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Integer> axes,
+                                  boolean rgb, int imageHeight, int imageWidth) ;
 
    /**
     * return number of resolutions of the multiresolution pyramid
@@ -71,5 +73,15 @@ public interface MultiresStorageAPI extends StorageAPI{
     * @return
     */
    public TaggedImage getImage(HashMap<String, Integer> axes, int resolutionIndex);
+
+
+   /**
+    * Check if dataset has an image with the specified axes
+    *
+    * @param axes HashMap mapping axis names to positions
+    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
+    * @return
+    */
+    public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
 
 }

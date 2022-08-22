@@ -1,4 +1,4 @@
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 /**
  * Used to signal that an image has been written to disk

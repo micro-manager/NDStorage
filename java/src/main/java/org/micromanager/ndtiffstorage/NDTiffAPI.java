@@ -3,8 +3,9 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
+import java.awt.geom.Rectangle2D;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -18,18 +19,19 @@ import mmcorej.org.json.JSONObject;
  *
  * @author henrypinkard
  */
-public interface StorageAPI {
+public interface NDTiffAPI {
 
    /**
     * Add an image into storage
     *
-    * @param taggedImg
+    * @param pixels
+    * @param metadata
     * @param axes
     * @param rgb is it RGB
     * @param imageHeight
     * @param imageWidth
     */
-   public Future putImage(TaggedImage taggedImg, HashMap<String, Integer> axes, boolean rgb, int imageHeight, int imageWidth);
+   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Integer> axes, boolean rgb, int imageHeight, int imageWidth);
 
    /**
     * Is this dataset finished writing and now read only?
@@ -99,13 +101,20 @@ public interface StorageAPI {
    public TaggedImage getImage(HashMap<String, Integer> axes);
 
    /**
+    * Get the essential metadata for the image (width, height, byte depth, rgb),
+    * without retrieving pixels and full metadata
+    * @param axes
+    * @return
+    */
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Integer> axes);
+
+   /**
     * Check if dataset has an image with the specified axes
     *
     * @param axes HashMap mapping axis names to positions
-    * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
     * @return
     */
-   public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
+   public boolean hasImage(HashMap<String, Integer> axes);
 
    /**
     * Get a set containing all image axes in this dataset

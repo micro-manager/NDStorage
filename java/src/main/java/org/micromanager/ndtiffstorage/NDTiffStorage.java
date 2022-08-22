@@ -14,9 +14,10 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import java.awt.Point;
+import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -37,6 +38,7 @@ import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
 import javax.swing.*;
+import javax.swing.text.html.HTML;
 
 /**
  * This class manages multiple multipage Tiff datasets, averaging multiple 2x2
@@ -46,7 +48,7 @@ import javax.swing.*;
  * downsample factor without truncation
  *
  */
-public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorageAPI {
+public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    public static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
 
@@ -95,7 +97,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     * Constructor to load existing storage from disk dir --top level saving
     * directory
     */
-   public MultiResMultipageTiffStorage(String dir) throws IOException {
+   public NDTiffStorage(String dir) throws IOException {
       externalMaxResLevel_ = null;
       loaded_ = true;
       directory_ = dir;
@@ -157,10 +159,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    /**
     * Constructor for new storage that doesn't parse summary metadata
     */
-   public MultiResMultipageTiffStorage(String dir, String name, JSONObject summaryMetadata,
-           int overlapX, int overlapY, boolean tiled,
-                              Integer externalMaxResLevel, int savingQueueSize,
-                                       Consumer<String> debugLogger) {
+   public NDTiffStorage(String dir, String name, JSONObject summaryMetadata,
+                        int overlapX, int overlapY, boolean tiled,
+                        Integer externalMaxResLevel, int savingQueueSize,
+                        Consumer<String> debugLogger) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -197,7 +199,6 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          throw new RuntimeException("Couldnt copy summary metadata");
       }
 
-      //prefix is provided by summary metadata
       try {
          uniqueAcqName_ = getUniqueAcqDirName(dir, name);
          //create acqusition directory for actual data
@@ -210,7 +211,12 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          @Override
          public void run() {
             //create directory for full res data
-            String fullResDir = directory_ + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
+            String fullResDir;
+            if (tiled_) {
+               fullResDir = directory_ + (dir.endsWith(File.separator) ? "" : File.separator) + FULL_RES_SUFFIX;
+            } else {
+               fullResDir = directory_;
+            }
             try {
                createDir(fullResDir);
             } catch (Exception ex) {
@@ -220,7 +226,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
             try {
                //Create full Res storage
                fullResStorage_ = new ResolutionLevel(fullResDir, true, summaryMD_,
-                       MultiResMultipageTiffStorage.this, prefix_);
+                       NDTiffStorage.this, prefix_);
             } catch (IOException ex) {
                throw new RuntimeException("couldn't create Full res storage");
             }
@@ -680,9 +686,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
 
                   IndexEntryData ied = lowResStorages_.get(resolutionIndex).putImage(indexKey, currentLevelPix, tags.toString().getBytes(),
                           rgb, tileHeight_, tileWidth_);
-                  for (ImageWrittenListener l : imageWrittenListeners_) {
-                     l.imageWritten(ied);
-                  }
+//                  for (ImageWrittenListener l : imageWrittenListeners_) {
+//                     l.imageWritten(ied);
+//                  }
 
                } else {
                   //Image already exists, only overwrite pixels to include new tiles
@@ -726,11 +732,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    /**
     * This version works for regular, non-multiresolution data
     *
-    * @param ti
-    * @param axessss
     */
-   public Future putImage(TaggedImage ti, HashMap<String, Integer> axessss,
+   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Integer> axessss,
                         boolean rgb, int imageHeight, int imageWidth) {
+      TaggedImage ti = new TaggedImage(pixels, metadata);
 //      try {
 //         Thread.sleep(20);
 //      } catch (Exception e) {
@@ -764,10 +769,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
          debugLogger_.accept("waiting for writing task queue complete");
       }
 
-      Object pixels = ti.pix;
-      byte[] metadata = ti.tags.toString().getBytes();
+      byte[] metadataBytes = metadata.toString().getBytes();
       String indexKey = IndexEntryData.serializeAxes(axessss);
-      fullResStorage_.addToWritePendingImages(indexKey, ti);
+      fullResStorage_.addToWritePendingImages(indexKey, ti,
+              new EssentialImageMetadata(imageWidth, imageHeight, byteDepth_, rgb));
 
    return blockingWritingTaskHandoff(new Runnable() {
       @Override
@@ -784,7 +789,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                debugLogger_.accept("putting image in storage");
             }
             //write to full res storage as normal (i.e. with overlap pixels present)
-            IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadata,
+            IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadataBytes,
                     rgb, imageHeight, imageWidth);
 
             if (debugLogger_ != null) {
@@ -829,8 +834,9 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
     * @return
     */
    @Override
-   public Future putImageMultiRes( TaggedImage ti, final HashMap<String, Integer> axes,
+   public Future putImageMultiRes( Object pixels, JSONObject metadata, final HashMap<String, Integer> axes,
                                   boolean rgb, int imageHeight, int imageWidth) {
+      TaggedImage ti = new TaggedImage(pixels, metadata);
       if (!firstImageAdded_) {
          //technically this doesnt need to be parsed here, because it should be fixed for the whole
          //dataset, NOT interpretted at runtime, but whatever
@@ -844,10 +850,10 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
       rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
-      Object pixels = ti.pix;
-      byte[] metadata = ti.tags.toString().getBytes();
+      byte[] metadataBytes = metadata.toString().getBytes();
       String indexKey = IndexEntryData.serializeAxes(StorageMD.getAxes(ti.tags));
-      fullResStorage_.addToWritePendingImages(indexKey, ti);
+      fullResStorage_.addToWritePendingImages(indexKey, ti,
+              new EssentialImageMetadata(imageWidth, imageHeight, byteDepth_, rgb));
       return blockingWritingTaskHandoff(new Runnable() {
          @Override
          public void run() {
@@ -860,7 +866,7 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
                imageAxes_.add(axes);
 
                //write to full res storage as normal (i.e. with overlap pixels present)
-               IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadata, rgb, imageHeight, imageWidth);
+               IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadataBytes, rgb, imageHeight, imageWidth);
                for (ImageWrittenListener l : imageWrittenListeners_) {
                   l.imageWritten(ied);
                }
@@ -898,6 +904,16 @@ public class MultiResMultipageTiffStorage implements StorageAPI, MultiresStorage
    public TaggedImage getImage(HashMap<String, Integer> axes) {
       //full resolution
       return getImage(axes, 0);
+   }
+
+   @Override
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Integer> axes) {
+      return fullResStorage_.getEssentialImageMetadata(IndexEntryData.serializeAxes(axes));
+   }
+
+   @Override
+   public boolean hasImage(HashMap<String, Integer> axes) {
+      return hasImage(axes, 0);
    }
 
    @Override

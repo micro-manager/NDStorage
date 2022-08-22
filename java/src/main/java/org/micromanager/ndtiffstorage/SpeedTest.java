@@ -1,4 +1,4 @@
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import java.io.File;
 import java.io.RandomAccessFile;

@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-package org.micromanager.multiresstorage;
+package org.micromanager.ndtiffstorage;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -36,20 +36,20 @@ import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
 
-public class MultipageTiffReader {
+public class NDTiffReader {
       
    private static final long BIGGEST_INT_BIT = (long) Math.pow(2, 31);
 
    
-   public static final char BITS_PER_SAMPLE = MultipageTiffWriter.BITS_PER_SAMPLE;
-   public static final char STRIP_OFFSETS = MultipageTiffWriter.STRIP_OFFSETS;    
-   public static final char SAMPLES_PER_PIXEL = MultipageTiffWriter.SAMPLES_PER_PIXEL;
-   public static final char STRIP_BYTE_COUNTS = MultipageTiffWriter.STRIP_BYTE_COUNTS;
-   public static final char IMAGE_DESCRIPTION = MultipageTiffWriter.IMAGE_DESCRIPTION;
+   public static final char BITS_PER_SAMPLE = NDTiffWriter.BITS_PER_SAMPLE;
+   public static final char STRIP_OFFSETS = NDTiffWriter.STRIP_OFFSETS;
+   public static final char SAMPLES_PER_PIXEL = NDTiffWriter.SAMPLES_PER_PIXEL;
+   public static final char STRIP_BYTE_COUNTS = NDTiffWriter.STRIP_BYTE_COUNTS;
+   public static final char IMAGE_DESCRIPTION = NDTiffWriter.IMAGE_DESCRIPTION;
       public static final char WIDTH = 256;
    public static final char HEIGHT = 257;
    
-   public static final char MM_METADATA = MultipageTiffWriter.MM_METADATA;
+   public static final char MM_METADATA = NDTiffWriter.MM_METADATA;
    
    private ByteOrder byteOrder_;  
    private File file_;
@@ -62,15 +62,15 @@ public class MultipageTiffReader {
    /**
     * This constructor is used for a file that is currently being written
     */
-   public MultipageTiffReader(JSONObject summaryMD) {
+   public NDTiffReader(JSONObject summaryMD) {
       summaryMetadata_ = summaryMD;
-      byteOrder_ = MultiResMultipageTiffStorage.BYTE_ORDER;
+      byteOrder_ = NDTiffStorage.BYTE_ORDER;
    }
 
    /**
     * This constructor is used for opening datasets that have already been saved
     */
-   public MultipageTiffReader(File file) throws IOException {
+   public NDTiffReader(File file) throws IOException {
       file_ = file;
       try {
          createFileChannel(file_);
@@ -141,7 +141,7 @@ public class MultipageTiffReader {
       int summaryMDHeader = tiffHeader.getInt(32);
       channel.close();
       ra.close();
-      if (summaryMDHeader == MultipageTiffWriter.SUMMARY_MD_HEADER) {
+      if (summaryMDHeader == NDTiffWriter.SUMMARY_MD_HEADER) {
          return true;
       }
       return false;
@@ -150,7 +150,20 @@ public class MultipageTiffReader {
    public JSONObject getSummaryMetadata() {
       return summaryMetadata_;
    }
-   
+
+   public EssentialImageMetadata readEssentialImageMetadata(String label) {
+      if (indexMap_.containsKey(label)) {
+         if (fileChannel_ == null) {
+            throw new RuntimeException("Attempted to read image on FileChannel that is null"); //can happen on acquiition abort
+         }
+         return indexMap_.get(label).toEssentialImageMetadata();
+
+      } else {
+         //label not in map--either writer hasnt finished writing it
+         return null;
+      }
+   }
+
    public TaggedImage readImage(String label) {
       if (indexMap_.containsKey(label)) {
          if (fileChannel_ == null) {
@@ -177,16 +190,16 @@ public class MultipageTiffReader {
    private JSONObject readSummaryMD() {
       try {
          ByteBuffer mdInfo = ByteBuffer.allocate(8).order(byteOrder_);
-         fileChannel_.read(mdInfo, 16);
+         fileChannel_.read(mdInfo, 20);
          int header = mdInfo.getInt(0);
          int length = mdInfo.getInt(4);
          
-         if (header != MultipageTiffWriter.SUMMARY_MD_HEADER) {
+         if (header != NDTiffWriter.SUMMARY_MD_HEADER) {
             throw new RuntimeException("Summary Metadata Header Incorrect");
          }
 
          ByteBuffer mdBuffer = ByteBuffer.allocate(length).order(byteOrder_);
-         fileChannel_.read(mdBuffer, 24);
+         fileChannel_.read(mdBuffer, 28);
          JSONObject summaryMD = new JSONObject(getString(mdBuffer));
 
          return summaryMD;
