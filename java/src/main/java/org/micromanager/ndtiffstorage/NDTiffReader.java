@@ -190,7 +190,7 @@ public class NDTiffReader {
    private JSONObject readSummaryMD() {
       try {
          ByteBuffer mdInfo = ByteBuffer.allocate(8).order(byteOrder_);
-         fileChannel_.read(mdInfo, 16);
+         fileChannel_.read(mdInfo, 20);
          int header = mdInfo.getInt(0);
          int length = mdInfo.getInt(4);
          
@@ -199,7 +199,7 @@ public class NDTiffReader {
          }
 
          ByteBuffer mdBuffer = ByteBuffer.allocate(length).order(byteOrder_);
-         fileChannel_.read(mdBuffer, 24);
+         fileChannel_.read(mdBuffer, 28);
          JSONObject summaryMD = new JSONObject(getString(mdBuffer));
 
          return summaryMD;

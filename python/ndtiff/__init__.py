@@ -1,3 +1,3 @@
 name = "ndtiff"
 
-from ndtiff.nd_tiff_current import Dataset
+from ndtiff._superclass import Dataset

@@ -1,9 +1,8 @@
 import numpy as np
-from pycromanager import Dataset
-import napari
+from ndtiff import Dataset
 
-# This path is to the top level of the magellan dataset (i.e. the one that contains the Full resolution folder)
-data_path = "/Users/henrypinkard/tmp/tcz_acq_84"
+data_path = "/Users/henrypinkard/Desktop/ndtiffv2.0_test"
+# data_path = "/Users/henrypinkard/Desktop/ndtiffv2.0_stitched_test"
 
 # open the dataset
 dataset = Dataset(data_path)
@@ -13,9 +12,8 @@ dataset = Dataset(data_path)
 # img, img_metadata = dataset.read_image(l=10, read_metadata=True)
 
 dask_array = dataset.as_array(stitched=False)
-np.array(dask_array)
+print(np.array(dask_array))
 
-v = napari.Viewer()
-v.add_image(dask_array)
+pass
 
-napari.run()
+#TODO: Generate new type datasets and write a few automated tests of key features

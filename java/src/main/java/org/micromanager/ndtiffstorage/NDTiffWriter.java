@@ -35,7 +35,21 @@ import javax.swing.*;
 
 public class NDTiffWriter {
 
-   private static final int MAJOR_VERSION = 2;
+   private static final int MAJOR_VERSION;
+   private static final int MINOR_VERSION;
+   //Extract Major and minor versions from file
+   static {
+      InputStream is = ClassLoader.getSystemResourceAsStream("FORMAT_VERSION");
+      Scanner myReader = new Scanner(is);
+      String version = "";
+      while (myReader.hasNextLine()) {
+         version = myReader.nextLine();
+      }
+      myReader.close();
+      String[] subs  = version.split("\\.");
+      MAJOR_VERSION = Integer.parseInt(subs[0]);
+      MINOR_VERSION = Integer.parseInt(subs[1]);
+   }
 
 //   private static final long BYTES_PER_MEG = 1048576;
 //   private static final long MAX_FILE_SIZE = 15*BYTES_PER_MEG;
@@ -80,6 +94,7 @@ public class NDTiffWriter {
 
    private ArrayList<Long>  writeTimes = new ArrayList<Long>();
    private ArrayList<Long> writeTimes2 = new ArrayList<Long>();
+
 
 
    public NDTiffWriter(String directory, String filename,
@@ -172,7 +187,7 @@ public class NDTiffWriter {
       byte[] summaryMDBytes = getBytesFromString(summaryMD.toString());
       int mdLength = summaryMDBytes.length;
       //20 bytes
-      ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getSmallBuffer(24);
+      ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getSmallBuffer(28);
       //8 bytes for file header
       if (masterMPTiffStorage_.BYTE_ORDER.equals(ByteOrder.BIG_ENDIAN)) {
          headerBuffer.asCharBuffer().put(0, (char) 0x4d4d);
@@ -190,11 +205,12 @@ public class NDTiffWriter {
 
       //8 bytes for unique identifier and major version
       headerBuffer.putInt(8, 483729);
-      headerBuffer.putInt(12, MAJOR_VERSION); //major version
+      headerBuffer.putInt(12, MAJOR_VERSION);
+      headerBuffer.putInt(16, MINOR_VERSION);
 
       //8 bytes for summaryMD header  summary md length + 
-      headerBuffer.putInt(16, SUMMARY_MD_HEADER);
-      headerBuffer.putInt(20, mdLength);
+      headerBuffer.putInt(20, SUMMARY_MD_HEADER);
+      headerBuffer.putInt(24, mdLength);
 
 
       //1 byte for each byte of UTF-8-encoded summary md

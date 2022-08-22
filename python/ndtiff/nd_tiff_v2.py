@@ -8,7 +8,6 @@ import sys
 import json
 import platform
 import dask.array as da
-import dask
 import warnings
 import struct
 import threading
@@ -275,7 +274,7 @@ class _ResolutionLevel:
 ### This function outside class to prevent problems with pickling when running them in differnet process
 
 
-class NDTiff_v2_0:
+class NDTiff_v2_0():
     """Class that opens a single NDTiffStorage dataset"""
 
     _POSITION_AXIS = "position"

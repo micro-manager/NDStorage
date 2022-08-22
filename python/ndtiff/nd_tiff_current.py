@@ -8,11 +8,8 @@ import sys
 import json
 import platform
 import dask.array as da
-import dask
 import warnings
 import struct
-from ndtiff_v1 import NDTiff_v1
-from nd_tiff_v2_0 import NDTiff_v2_0
 import threading
 
 
@@ -54,11 +51,11 @@ class _SingleNDTiffReader:
             int byte offset of first image IFD
         """
         # read standard tiff header
-        if self._read(0,2) == b"\x4d\x4d":
+        if self._read(0, 2) == b"\x4d\x4d":
             # Big endian
             if sys.byteorder != "big":
                 raise Exception("Potential issue with mismatched endian-ness")
-        elif self._read(0,2) == b"\x49\x49":
+        elif self._read(0, 2) == b"\x49\x49":
             # little endian
             if sys.byteorder != "little":
                 raise Exception("Potential issue with mismatched endian-ness")
@@ -70,12 +67,13 @@ class _SingleNDTiffReader:
 
         # read custom stuff: header, summary md
         # int.from_bytes(self.mmap_file[24:28], sys.byteorder) # should be equal to 483729 starting in version 1
-        self._major_version = int.from_bytes(self._read(12,16), sys.byteorder)
+        self._major_version = int.from_bytes(self._read(12, 16), sys.byteorder)
+        self._minor_version = int.from_bytes(self._read(16, 20), sys.byteorder)
 
-        summary_md_header, summary_md_length = np.frombuffer(self._read(16,24), dtype=np.uint32)
+        summary_md_header, summary_md_length = np.frombuffer(self._read(20, 28), dtype=np.uint32)
         if summary_md_header != self.SUMMARY_MD_HEADER:
             raise Exception("Summary metadata header wrong")
-        summary_md = json.loads(self._read(24, 24 + summary_md_length))
+        summary_md = json.loads(self._read(28, 28 + summary_md_length))
         return summary_md, first_ifd_offset
 
     def _read(self, start, end):
@@ -125,8 +123,7 @@ class _SingleNDTiffReader:
             )
         return image
 
-
-class NDTiffDataset:
+class NDTiffDataset():
     """
     Class that opens a single NDTiff dataset
     """
@@ -148,7 +145,7 @@ class NDTiffDataset:
         self._lock = threading.Lock()
         if remote_storage_monitor is not None:
             # this dataset is a view of an active acquisition. The storage exists on the java side
-            self.new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
+            self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
             self._remote_storage_monitor = remote_storage_monitor
             self.summary_metadata = self._remote_storage_monitor.get_summary_metadata()
             if "GridPixelOverlapX" in self.summary_metadata.keys():
@@ -158,38 +155,36 @@ class NDTiffDataset:
                 self._tile_height = (
                     self.summary_metadata["Height"] - self.summary_metadata["GridPixelOverlapY"]
                 )
-
-            self.path = remote_storage_monitor.get_disk_location()
+            if dataset_path is None:
+                self.path = remote_storage_monitor.get_disk_location()
+            else:
+                self.path = dataset_path #Overriden by pyramid storage class creating this
+            self.path += "" if self.path[-1] == os.sep else os.sep
             self.axes = {}
-            return
-        else:
-            self._remote_storage_monitor = None
-
-        self.path = dataset_path
-
-
-
-        if remote_storage_monitor is not None:
             self.index = {}
             self._readers_by_filename = {}
-        else:
-            self.index = self.read_index(self.path)
-            tiff_names = [
-                os.path.join(self.path, tiff) for tiff in os.listdir(self.path) if tiff.endswith(".tif")
-            ]
-            self._readers_by_filename = {}
-            # Count how many files need to be opened
-            num_tiffs = 0
-            count = 0
-            for file in os.listdir(self.path):
-                if file.endswith(".tif"):
-                    num_tiffs += 1
-            # populate list of readers and tree mapping indices to readers
-            for tiff in tiff_names:
-                print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
-                count += 1
-                self._readers_by_filename[tiff.split(os.sep)[-1]] = _SingleNDTiffReader(tiff)
-            self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
+            return
+
+        self._remote_storage_monitor = None
+        self.path = dataset_path
+        self.path += "" if self.path[-1] == os.sep else os.sep
+        self.index = self.read_index(self.path)
+        tiff_names = [
+            os.path.join(self.path, tiff) for tiff in os.listdir(self.path) if tiff.endswith(".tif")
+        ]
+        self._readers_by_filename = {}
+        # Count how many files need to be opened
+        num_tiffs = 0
+        count = 0
+        for file in os.listdir(self.path):
+            if file.endswith(".tif"):
+                num_tiffs += 1
+        # populate list of readers and tree mapping indices to readers
+        for tiff in tiff_names:
+            print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
+            count += 1
+            self._readers_by_filename[tiff.split(os.sep)[-1]] = _SingleNDTiffReader(tiff)
+        self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
 
         self.overlap = (
@@ -223,8 +218,19 @@ class NDTiffDataset:
         print("\rDataset opened                ")
 
     def get_channel_names(self):
-        with self._lock:
-            return self.channel_names.keys()
+        return self.channel_names.keys()
+
+    def has_new_image(self):
+        """
+        For datasets currently being acquired, check whether a new image has arrived since this function
+        was last called, so that a viewer displaying the data can be updated.
+        """
+        # pass through to full resolution, since only this is monitored in current implementation
+        if not hasattr(self, '_new_image_arrived'):
+            return False # pre-initilization
+        new = self._new_image_arrived
+        self._new_image_arrived = False
+        return new
 
     def has_image(
         self,
@@ -403,7 +409,7 @@ class NDTiffDataset:
                     _CHANNEL_AXIS in axes.keys()
                     and axes[_CHANNEL_AXIS] not in self.channel_names.values()
                 ):
-                    channel_name = self.read_metadata(axes)["Channel"]
+                    channel_name = self.read_metadata(**axes)["Channel"]
                     self.channel_names[channel_name] = axes[_CHANNEL_AXIS]
                 if len(self.channel_names.values()) == len(self.axes[_CHANNEL_AXIS]):
                     break
@@ -447,7 +453,7 @@ class NDTiffDataset:
 
         push_port = self._remote_storage_monitor.get_port()
         monitor_thread = threading.Thread(
-            target=_storage_monitor_fn,
+            target=storage_monitor_fn,
             args=(
                 self,
                 push_port,
@@ -480,7 +486,7 @@ class NDTiffDataset:
 
         if index_entry["filename"] not in self._readers_by_filename:
             self._readers_by_filename[index_entry["filename"]] = _SingleNDTiffReader(
-                self.dir + index_entry["filename"]
+                self.path + index_entry["filename"]
             )
         return axes, index_entry
 
@@ -681,45 +687,7 @@ class NDTiffDataset:
         return array
 
 
-
-class Dataset:
-    """
-    Generic class used to figure out which particular opener to hot swap in
-    """
-    def __new__(cls, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
-        ## Datasets currently being collected
-        if dataset_path is None:
-            # Check if its a multi-res pyramid or regular
-            if "GridPixelOverlapX" in remote_storage_monitor.get_summary_metadata():
-                return super(NDTiffPyramidDataset, cls).__new__(NDTiffPyramidDataset)
-            else:
-                return super(NDTiffDataset, cls).__new__(NDTiffDataset)
-
-        # Search for Full resolution dir, check for index
-        res_dirs = [
-            dI for dI in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, dI))
-        ]
-        if "Full resolution" not in res_dirs:
-            # Full resolution was removed ND Tiff starting in V2.1 for non stitched
-            fullres_path = dataset_path
-            # but if it doesn't have an index, than something is wrong
-            if "NDTiff.index" not in os.listdir(fullres_path):
-                raise Exception('Cannot find NDTiff index')
-            # It must be an NDTiff >= 2.1 non-multi-resolution, loaded from disk
-            return super(NDTiffDataset, cls).__new__(NDTiffDataset)
-        # So there is a full res folder, now figure out if its v1 or v2
-        fullres_path = (
-                dataset_path + ("" if dataset_path[-1] == os.sep else os.sep) + "Full resolution")
-        if "NDTiff.index" in os.listdir(fullres_path):
-            return super(NDTiff_v2_0, cls).__new__(NDTiff_v2_0)
-        else:
-            obj = NDTiff_v1.__new__(NDTiff_v1)
-            obj.__init__(dataset_path, full_res_only, remote_storage=None)
-            return obj
-
-
-
-class NDTiffPyramidDataset:
+class NDTiffPyramidDataset():
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""
 
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
@@ -738,22 +706,28 @@ class NDTiffPyramidDataset:
         """
         self._lock = threading.Lock()
         if remote_storage_monitor is not None:
+            self._remote_storage_monitor = None # IT belongs to the full resolution subclass
             # this dataset is a view of an active acquisition. The storage exists on the java side
-            self.new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
+            self.path = remote_storage_monitor.get_disk_location()
+            self.path += "" if self.path[-1] == os.sep else os.sep
 
             with self._lock:
                 self.res_levels = {
-                    0: NDTiffDataset(remote_storage_monitor=remote_storage_monitor)
+                    0: NDTiffDataset(remote_storage_monitor=remote_storage_monitor,
+                                     dataset_path=self.path + "Full resolution" + os.sep)
                 }
             # No information related higher res levels when remote storage monitoring right now
 
             #Copy stuff from the full res class for convenience
             self.summary_metadata = self.res_levels[0].summary_metadata
             self.axes = self.res_levels[0].axes
+
             return
 
         # Loading from disk
+        self._remote_storage_monitor = None
         self.path = dataset_path
+        self.path += "" if self.path[-1] == os.sep else os.sep
         res_dirs = [
             dI for dI in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, dI))
         ]
@@ -803,6 +777,14 @@ class NDTiffPyramidDataset:
         Return a list of every combination of axes that has a image in this dataset
         """
         return self.res_levels[res_level].get_index_keys()
+
+    def has_new_image(self):
+        """
+        For datasets currently being acquired, check whether a new image has arrived since this function
+        was last called, so that a viewer displaying the data can be updated.
+        """
+        # pass through to full resolution, since only this is monitored in current implementation
+        return self.res_levels[0]
 
     def as_array(self, axes=None, stitched=False, **kwargs):
         """
@@ -994,11 +976,11 @@ class NDTiffPyramidDataset:
 
     def _add_storage_monitor_fn(self, storage_monitor_fn, callback_fn=None, debug=False):
         # Only valid for the full res data
-        self.res_levels[0]._add_storage_monitor_fn(storage_monitor_fn, callback_fn, debug)
+        return self.res_levels[0]._add_storage_monitor_fn(storage_monitor_fn, callback_fn, debug)
 
     def _add_index_entry(self, index_entry):
         # Pass through to full res data
-        self.res_levels[0]._add_index_entry(index_entry)
+        return self.res_levels[0]._add_index_entry(index_entry)
 
     def close(self):
         with self._lock:
