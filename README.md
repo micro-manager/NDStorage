@@ -40,9 +40,9 @@ The individual TIFF files are standard TIFF files, with the addition of a specia
 
 *8 bytes*: Standard TIFF Header
 
-*4 bytes*: 32-bit integer containing the number 483729, added in v1.0.0 to differentiate from Micro-Manager multipage tiff files
+*4 bytes*: 32-bit integer containing the number 483729, added in v1.0 to differentiate from Micro-Manager multipage tiff files
 
-*4 bytes*: 32-bit integer containing major version (added in 1.0.0)
+*4 bytes*: 32-bit integer containing major version (added in v1.0)
 
 *4 bytes*: 32-bit integer containing Summary metadata header, 2355492 
 
