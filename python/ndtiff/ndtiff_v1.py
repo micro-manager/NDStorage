@@ -390,7 +390,7 @@ class _ResolutionLevel:
             reader.close()
 
 
-class NDTiffv1:
+class NDTiff_v1:
     """Class that opens a single NDTiffStorage dataset (major versions 0 and 1)"""
 
     _POSITION_AXIS = "position"

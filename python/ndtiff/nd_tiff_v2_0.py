@@ -11,13 +11,12 @@ import dask.array as da
 import dask
 import warnings
 import struct
-from legacy_data import NDTiffv1
 import threading
 
 
-class _SingleNDTiffReader:
+class _MultipageTiffReader:
     """
-    Class corresponsing to a single multipage tiff file
+    Class corresponsing to a single multipage tiff file in a Micro-Magellan dataset.
     Pass the full path of the TIFF to instantiate and call close() when finished
     """
 
@@ -152,7 +151,7 @@ class _ResolutionLevel:
             for tiff in tiff_names:
                 print("\rOpening file {} of {}...".format(count + 1, max_count), end="")
                 count += 1
-                self._readers_by_filename[tiff.split(os.sep)[-1]] = _SingleNDTiffReader(tiff)
+                self._readers_by_filename[tiff.split(os.sep)[-1]] = _MultipageTiffReader(tiff)
             self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
     def has_image(self, axes):
@@ -167,7 +166,7 @@ class _ResolutionLevel:
         _, axes, index_entry = self.read_single_index_entry(data, self.index)
 
         if index_entry["filename"] not in self._readers_by_filename:
-            self._readers_by_filename[index_entry["filename"]] = _SingleNDTiffReader(
+            self._readers_by_filename[index_entry["filename"]] = _MultipageTiffReader(
                 self.path_root + index_entry["filename"]
             )
         return axes, index_entry
@@ -276,32 +275,7 @@ class _ResolutionLevel:
 ### This function outside class to prevent problems with pickling when running them in differnet process
 
 
-def _storage_monitor_fn(
-    dataset, storage_monitor_push_port, connected_event, callback_fn, debug=False
-):
-    #TODO: might need to add in support for doing this on a different port, if Acquistiion/bridge is not on default port
-    bridge = Bridge()
-    monitor_socket = bridge._connect_pull(storage_monitor_push_port)
-
-    connected_event.set()
-
-    while True:
-        message = monitor_socket.receive()
-
-        if "finished" in message:
-            # Poison, time to shut down
-            monitor_socket.close()
-            return
-
-        index_entry = message["index_entry"]
-        axes = dataset._add_index_entry(index_entry)
-        dataset.new_image_arrived = True
-
-        if callback_fn is not None:
-            callback_fn(axes, dataset)
-
-
-class NDTiffDataset:
+class NDTiff_v2_0:
     """Class that opens a single NDTiffStorage dataset"""
 
     _POSITION_AXIS = "position"
@@ -310,27 +284,6 @@ class NDTiffDataset:
     _Z_AXIS = "z"
     _TIME_AXIS = "time"
     _CHANNEL_AXIS = "channel"
-
-    def __new__(cls, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
-        if dataset_path is None:
-            return super(NDTiffDataset, cls).__new__(NDTiffDataset)
-        # Search for Full resolution dir, check for index
-        res_dirs = [
-            dI for dI in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, dI))
-        ]
-        if "Full resolution" not in res_dirs:
-            # Full resolution was removed ND Tiff starting in V2.1 for non stitched
-            fullres_path = dataset_path
-        else:
-            fullres_path = (
-                dataset_path + ("" if dataset_path[-1] == os.sep else os.sep) + "Full resolution"
-            )
-        if "NDTiff.index" in os.listdir(fullres_path):
-            return super(NDTiffDataset, cls).__new__(NDTiffDataset)
-        else:
-            obj = NDTiffv1.__new__(NDTiffv1)
-            obj.__init__(dataset_path, full_res_only, remote_storage=None)
-            return obj
 
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
         """
@@ -349,8 +302,8 @@ class NDTiffDataset:
         self._tile_height = None
         self._lock = threading.Lock()
         if remote_storage_monitor is not None:
-            # this dataset is a view of an active acquisition. The storage exists on the java side
-            self.new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
+            # this dataset is a view of an active acquisiiton. The storage exists on the java side
+            self.new_image_arrived = False # used by napari viewer to check for updates. Will be reset to false by them
             self._remote_storage_monitor = remote_storage_monitor
             self.summary_metadata = self._remote_storage_monitor.get_summary_metadata()
             if "GridPixelOverlapX" in self.summary_metadata.keys():
@@ -361,7 +314,7 @@ class NDTiffDataset:
                     self.summary_metadata["Height"] - self.summary_metadata["GridPixelOverlapY"]
                 )
 
-            full_res_path = remote_storage_monitor.get_disk_location()
+            dataset_path = remote_storage_monitor.get_disk_location()
             dataset_path += "" if dataset_path[-1] == os.sep else os.sep
             full_res_path = dataset_path + "Full resolution"
             with self._lock:
@@ -461,13 +414,13 @@ class NDTiffDataset:
         """
         Read through first index to get some global data about images (assuming it is same for all)
         """
-        if first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT_RGB:
+        if first_index["pixel_type"] == _MultipageTiffReader.EIGHT_BIT_RGB:
             self.bytes_per_pixel = 3
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT:
+        elif first_index["pixel_type"] == _MultipageTiffReader.EIGHT_BIT:
             self.bytes_per_pixel = 1
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT:
+        elif first_index["pixel_type"] == _MultipageTiffReader.SIXTEEN_BIT:
             self.bytes_per_pixel = 2
             self.dtype = np.uint16
 
@@ -497,43 +450,6 @@ class NDTiffDataset:
             self._parse_first_index(index_entry)
 
         return axes
-
-    def _add_storage_monitor_fn(self, callback_fn=None, debug=False):
-        """
-        Add a callback function that gets called whenever a new image is writtern to disk (for acquisitions in
-        progress only)
-
-        Parameters
-        ----------
-        callback_fn : Callable
-            callable with that takes 1 argument, the axes dict of the image just written
-        """
-        if self._remote_storage_monitor is None:
-            raise Exception("Only valid for datasets with writing in progress")
-
-        connected_event = threading.Event()
-
-        push_port = self._remote_storage_monitor.get_port()
-        monitor_thread = threading.Thread(
-            target=_storage_monitor_fn,
-            args=(
-                self,
-                push_port,
-                connected_event,
-                callback_fn,
-                debug,
-            ),
-            name="ImageSavedCallbackThread",
-        )
-
-        monitor_thread.start()
-
-        # Wait for pulling to start before you signal for pushing to start
-        connected_event.wait()  # wait for push/pull sockets to connect
-
-        # start pushing out all the image written events (including ones that have already accumulated)
-        self._remote_storage_monitor.start()
-        return monitor_thread
 
     def get_index_keys(self, res_level=0):
         """

@@ -1,4 +1,4 @@
-name: Maven_depolyment
+name: Reader tests
 
 
 on: pull_request

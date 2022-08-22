@@ -686,9 +686,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
                   IndexEntryData ied = lowResStorages_.get(resolutionIndex).putImage(indexKey, currentLevelPix, tags.toString().getBytes(),
                           rgb, tileHeight_, tileWidth_);
-                  for (ImageWrittenListener l : imageWrittenListeners_) {
-                     l.imageWritten(ied);
-                  }
+//                  for (ImageWrittenListener l : imageWrittenListeners_) {
+//                     l.imageWritten(ied);
+//                  }
 
                } else {
                   //Image already exists, only overwrite pixels to include new tiles
