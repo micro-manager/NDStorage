@@ -95,6 +95,11 @@ The index file is what enables the formats fast performance. Since a vanilla Tif
 This file is optional, and contains settings for displaying the data contained within the file (colormaps, contrast settings, etc.). No particular form is assumed, other than it is all contained in JSON.
 
 
+## Differences from version 2
+
+1. In version 2 NDTiff files, even when not using multi-resolution pyramid features, the data were in a `Full resolution` directory. In v3.0 this was eliminated in favor of putting them directly in the top level directory
+2. An additional 4 bytes was added to bytes 16-20 of the header of each file containing the minor version of the format, thereby shifting back the summary metadata and it's header by 4 bytes
+
 ## (DEPRECATED) Specification for NDTiff v1 and earlier
 
 This section contains the now deprecated description of NDTiff 1.0 files
