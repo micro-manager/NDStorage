@@ -130,7 +130,7 @@ class NDTiffDataset():
 
     def __init__(self, dataset_path=None, remote_storage_monitor=None, **kwargs):
         """
-        Create an Object providing access to and NDTiffStorage dataset,
+        Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
 
         Parameters
@@ -138,7 +138,7 @@ class NDTiffDataset():
         dataset_path : str
             Abosolute path of top level folder of a dataset on disk
         remote_storage_monitor : JavaObjectShadow
-            Object that allows callbacks from remote NDTiffStorage
+            Object that allows callbacks from remote NDTiffStorage. User's need not call this directly
         """
         self._tile_width = None
         self._tile_height = None
@@ -692,7 +692,7 @@ class NDTiffPyramidDataset():
 
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
         """
-        Create an Object providing access to and NDTiffStorage pyramid dataset,
+        Provides access to a NDTiffStorage pyramid dataset,
         either one currently being acquired or one on disk
 
         Parameters
@@ -700,9 +700,9 @@ class NDTiffPyramidDataset():
         dataset_path : str
             Abosolute path of top level folder of a dataset on disk
         full_res_only : bool
-            One open the full resolution data, if it is multi-res
+            Only open the full resolution data to save time
         remote_storage_monitor : JavaObjectShadow
-            Object that allows callbacks from remote NDTiffStorage
+            Object that allows callbacks from remote NDTiffStorage. Users need not call this directly
         """
         self._lock = threading.Lock()
         if remote_storage_monitor is not None:
