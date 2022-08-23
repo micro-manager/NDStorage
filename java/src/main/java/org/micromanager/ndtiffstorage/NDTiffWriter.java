@@ -88,7 +88,6 @@ public class NDTiffWriter {
    //Reader associated with this file
    private NDTiffReader reader_;
    private final String filename_;
-   private volatile boolean displayStorer_;
 
    private long startTime_;
 
@@ -99,7 +98,6 @@ public class NDTiffWriter {
 
    public NDTiffWriter(String directory, String filename,
                        JSONObject summaryMD, NDTiffStorage mpTiffStorage) throws IOException {
-      displayStorer_ = false;
       masterMPTiffStorage_ = mpTiffStorage;
       reader_ = new NDTiffReader(summaryMD);
       File f = new File(directory + "/" + filename);

@@ -182,7 +182,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    public NDTiffStorage(String dir, String name, JSONObject summaryMetadata,
                         int overlapX, int overlapY, boolean tiled,
                         Integer externalMaxResLevel, int savingQueueSize,
-                        Consumer<String> debugLogger) {
+                        Consumer<String> debugLogger, boolean createDir) {
       externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
@@ -220,9 +220,15 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
 
       try {
-         uniqueAcqName_ = getUniqueAcqDirName(dir, name);
-         //create acqusition directory for actual data
-         directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
+         if (!createDir) {
+            //  In MM MDAs, top level dir is created by other code
+            directory_ = dir;
+         } else {
+            uniqueAcqName_ = getUniqueAcqDirName(dir, name);
+            //create acqusition directory for actual data
+            directory_ = dir + (dir.endsWith(File.separator) ? "" : File.separator) + uniqueAcqName_;
+         }
+
       } catch (Exception e) {
          throw new RuntimeException("Couldn't make acquisition directory");
       }
@@ -975,6 +981,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * Singal to finish writing and block until everything pending is done
     */
    public void finishedWriting()  {
+      if (loaded_) {
+         return;
+      }
       if (debugLogger_ != null) {
          debugLogger_.accept("Finished writing. Remaining writing task queue size = " + writingTaskQueue_.size());
       }
