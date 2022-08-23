@@ -1,6 +1,15 @@
 # NDTiffStorage
 NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Pycro-Manager](https://github.com/micro-manager/pycro-manager) and [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and is one of three available options in Micro-Manager. This repository contains Java code for reading/writing these files, as well as python code (the [`ndtiff`](https://pypi.org/project/ndtiff/) package) for reading them. Instructions on how to use the python readers can be found in the [Pycro-Manager documentation](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data).
 
+Briefly, they are:
+```
+pip install ndtiff
+```
+```python
+from ndtiff import Dataset
+data = Dataset('/path/to/data')
+```
+
 ## Rationale
 The NDTiff library is optmized for size, speed, and flexibility. Several optimizations are in place to to achieve high-performance in each category.
 
