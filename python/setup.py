@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 # extract version
-path = path.realpath("python/ndtiff/_version.py")
+path = path.realpath("ndtiff/_version.py")
 version_ns = {}
 with open(path, encoding="utf8") as f:
     exec(f.read(), {}, version_ns)
