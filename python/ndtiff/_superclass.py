@@ -8,7 +8,7 @@ import numpy as np
 class Dataset:
     """
     Generic class for opening NDTiff datasets. Creating an instance of this class will
-    automatically return an instance of the class appropriate to the version type of NDTiff dataset
+    automatically return an instance of the class appropriate to the version and type of NDTiff dataset required
     """
     def __new__(cls, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
         ## Datasets currently being collected--must be v3
