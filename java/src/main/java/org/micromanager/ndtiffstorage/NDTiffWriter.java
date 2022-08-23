@@ -184,7 +184,7 @@ public class NDTiffWriter {
    private void writeMMHeaderAndSummaryMD(JSONObject summaryMD) throws IOException {
       byte[] summaryMDBytes = getBytesFromString(summaryMD.toString());
       int mdLength = summaryMDBytes.length;
-      //20 bytes
+      //28 bytes
       ByteBuffer headerBuffer = (ByteBuffer) masterMPTiffStorage_.getSmallBuffer(28);
       //8 bytes for file header
       if (masterMPTiffStorage_.BYTE_ORDER.equals(ByteOrder.BIG_ENDIAN)) {
@@ -193,15 +193,14 @@ public class NDTiffWriter {
          headerBuffer.asCharBuffer().put(0, (char) 0x4949);
       }
       headerBuffer.asCharBuffer().put(1, (char) 42);
-      int firstIFDOffset = 24 + (int) (mdLength);
+      int firstIFDOffset = 28 + (int) (mdLength);
       if (firstIFDOffset % 2 == 1) {
          firstIFDOffset++; //Start first IFD on a word
       }
       headerBuffer.putInt(4, firstIFDOffset);
 
-      //8 bytes for display settings offset header and display settings offset--written later
 
-      //8 bytes for unique identifier and major version
+      //12 bytes for unique identifier and major version
       headerBuffer.putInt(8, 483729);
       headerBuffer.putInt(12, MAJOR_VERSION);
       headerBuffer.putInt(16, MINOR_VERSION);
