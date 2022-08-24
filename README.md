@@ -1,3 +1,7 @@
+[![License](https://img.shields.io/pypi/l/ndtiff.svg)](https://github.com/micro-manager/ndtiff/raw/master/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/ndtiff.svg)](https://pypi.org/project/ndtiff)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/ndtiff.svg)](https://pypistats.org/packages/ndtiff)
+   
 # NDTiffStorage
 NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Pycro-Manager](https://github.com/micro-manager/pycro-manager) and [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and is one of three available options in Micro-Manager. This repository contains Java code for reading/writing these files, as well as python code (the [`ndtiff`](https://pypi.org/project/ndtiff/) package) for reading them. Instructions on how to use the python readers can be found in the [Pycro-Manager documentation](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data).
 
