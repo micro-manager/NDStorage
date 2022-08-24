@@ -57,6 +57,8 @@ The multi-resolution pyramid versions of the files are essentially series of ind
 └── display_settings.txt
 ```
 
+In addition, with each successive downsampling, a 2x2 grid of adjacent tiles are merged into a a single tile. This keeps the size of the images saved equal at each successive resolution level.
+
 ### Structure within each TIFF file
 
 The individual TIFF files are standard TIFF files, with the addition of a specialized header:
