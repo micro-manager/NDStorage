@@ -2,8 +2,8 @@ name: Reader tests
 
 on: 
   pull_request:
-    paths:
-      - 'python'
+#     paths:
+#       - 'python'
   push:    
 #   push:
 #     paths:
