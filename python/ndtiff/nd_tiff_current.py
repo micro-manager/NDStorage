@@ -401,18 +401,23 @@ class NDTiffDataset():
         return axes
 
     def _read_channel_names(self):
-        if _CHANNEL_AXIS in self.axes.keys():
-            self.channel_names = {}
-            for key in self.index.keys():
-                axes = {axis: position for axis, position in key}
-                if (
-                    _CHANNEL_AXIS in axes.keys()
-                    and axes[_CHANNEL_AXIS] not in self.channel_names.values()
-                ):
-                    channel_name = self.read_metadata(**axes)["Channel"]
-                    self.channel_names[channel_name] = axes[_CHANNEL_AXIS]
-                if len(self.channel_names.values()) == len(self.axes[_CHANNEL_AXIS]):
-                    break
+        if 'ChNames' in self.summary_metadata:
+            # It was created by a MM MDA/Clojure acquistiion engine
+            self.channel_names = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
+        else:
+            # AcqEngJ
+            if _CHANNEL_AXIS in self.axes.keys():
+                self.channel_names = {}
+                for key in self.index.keys():
+                    axes = {axis: position for axis, position in key}
+                    if (
+                        _CHANNEL_AXIS in axes.keys()
+                        and axes[_CHANNEL_AXIS] not in self.channel_names.values()
+                    ):
+                        channel_name = self.read_metadata(**axes)["Channel"]
+                        self.channel_names[channel_name] = axes[_CHANNEL_AXIS]
+                    if len(self.channel_names.values()) == len(self.axes[_CHANNEL_AXIS]):
+                        break
 
 
     def _parse_first_index(self, first_index):
