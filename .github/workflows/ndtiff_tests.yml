@@ -4,9 +4,10 @@ on:
   pull_request:
     paths:
       - 'python'
-  push:
-    paths:
-      - 'python'
+  push:    
+#   push:
+#     paths:
+#       - 'python'
 
 # # Cancel actions when new commits are pushed to PR
 # concurrency: 
