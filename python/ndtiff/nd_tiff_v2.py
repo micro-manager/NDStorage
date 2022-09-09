@@ -1,4 +1,4 @@
-"""
+""" 
 Library for reading multiresolution micro-magellan
 """
 import os
