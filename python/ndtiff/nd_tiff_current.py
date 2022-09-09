@@ -142,7 +142,7 @@ class NDTiffDataset():
         """
         self._tile_width = None
         self._tile_height = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         if remote_storage_monitor is not None:
             # this dataset is a view of an active acquisition. The storage exists on the java side
             self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
@@ -379,12 +379,17 @@ class NDTiffDataset():
         # convert to dict
         return [{axis_name: position for axis_name, position in key} for key in frozen_set_list]
 
-    def _add_index_entry(self, index_entry):
+    def _add_index_entry(self, data):
         """
         Add entry for a image that has been recieved and is now on disk
         """
         with self._lock:
-            axes, index_entry = self._add_index_entry(index_entry)
+            _, axes, index_entry = self._read_single_index_entry(data, self.index)
+
+            if index_entry["filename"] not in self._readers_by_filename:
+                self._readers_by_filename[index_entry["filename"]] = _SingleNDTiffReader(
+                    self.path + index_entry["filename"]
+                )
 
             # update the axes that have been seen
             for axis_name in axes.keys():
@@ -481,19 +486,6 @@ class NDTiffDataset():
     def _does_have_image(self, axes):
         key = frozenset(axes.items())
         return key in self.index
-
-    def _add_index_entry(self, data):
-        """
-        Manually add a single index entry
-        :param data: bytes object of a single index entry
-        """
-        _, axes, index_entry = self._read_single_index_entry(data, self.index)
-
-        if index_entry["filename"] not in self._readers_by_filename:
-            self._readers_by_filename[index_entry["filename"]] = _SingleNDTiffReader(
-                self.path + index_entry["filename"]
-            )
-        return axes, index_entry
 
     def _read_single_index_entry(self, data, entries, position=0):
         index_entry = {}
@@ -709,7 +701,7 @@ class NDTiffPyramidDataset():
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage. Users need not call this directly
         """
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         if remote_storage_monitor is not None:
             self._remote_storage_monitor = None # IT belongs to the full resolution subclass
             # this dataset is a view of an active acquisition. The storage exists on the java side
