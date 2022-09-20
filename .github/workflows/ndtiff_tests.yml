@@ -1,19 +1,18 @@
 name: Reader tests
 
-
 on: 
   pull_request:
-    paths:
-      - 'python'
-  push:
-    paths:
-      - 'python'
+#     paths:
+#       - 'python'
+#   push:    
+#   push:
+#     paths:
+#       - 'python'
 
 # # Cancel actions when new commits are pushed to PR
 # concurrency: 
 #     group: ${{ github.head_ref }}
 #     cancel-in-progress: true
-
 
 jobs:
   test-python-reader:
