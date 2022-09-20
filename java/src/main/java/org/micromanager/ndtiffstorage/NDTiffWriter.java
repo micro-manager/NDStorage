@@ -35,21 +35,9 @@ import javax.swing.*;
 
 public class NDTiffWriter {
 
-   private static final int MAJOR_VERSION;
-   private static final int MINOR_VERSION;
-   //Extract Major and minor versions from file
-   static {
-      InputStream is = ClassLoader.getSystemResourceAsStream("FORMAT_VERSION");
-      Scanner myReader = new Scanner(is);
-      String version = "";
-      while (myReader.hasNextLine()) {
-         version = myReader.nextLine();
-      }
-      myReader.close();
-      String[] subs  = version.split("\\.");
-      MAJOR_VERSION = Integer.parseInt(subs[0]);
-      MINOR_VERSION = Integer.parseInt(subs[1]);
-   }
+   private static final int MAJOR_VERSION = 3;
+   private static final int MINOR_VERSION = 0;
+
 
 //   private static final long BYTES_PER_MEG = 1048576;
 //   private static final long MAX_FILE_SIZE = 15*BYTES_PER_MEG;
