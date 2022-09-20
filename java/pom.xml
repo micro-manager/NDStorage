@@ -56,7 +56,7 @@
     <build>
     <resources>
         <resource>
-            <directory>https://github.com/micro-manager/NDTiffStorage/java/src/main/resources/FORMAT_VERSION</directory>
+            <directory>https://github.com/micro-manager/NDTiffStorage/java/src/main/resources</directory>
         </resource>
     </resources>
 
