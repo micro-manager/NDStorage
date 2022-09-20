@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.micro-manager.ndtiffstorage</groupId>
     <artifactId>NDTiffStorage</artifactId>
-    <version>2.5.5</version>
+    <version>2.5.6</version>
     <packaging>jar</packaging>
     <name>NDTiff Storage file format</name>
     <description>Java-based writer and reader used for NDTiffStorage format</description>
@@ -54,11 +54,11 @@
 
 
     <build>
-    <resources>
-        <resource>
-            <directory>src/main/resources</directory>
-        </resource>
-    </resources>
+        <resources>
+            <resource>
+                <directory>https://github.com/micro-manager/NDTiffStorage/tree/main/java/src/main/resources</directory>
+            </resource>
+        </resources>
 
       <plugins>
        <plugin>
