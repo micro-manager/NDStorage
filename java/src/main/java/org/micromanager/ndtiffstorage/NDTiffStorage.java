@@ -300,7 +300,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          return null;
       }
       if (!loaded_) {
-         return new int[]{0, 0, getNumCols() * tileWidth_, getNumRows() * tileHeight_};
+         return new int[]{0, 0, (int) ((getMinCol() + getNumCols()) * tileWidth_),
+                 (int) ((getMinRow() + getNumRows()) * tileHeight_)};
       } else {
          int yMin = (int) (getMinRow() * tileHeight_);
          int xMin = (int) (getMinCol() * tileWidth_);
