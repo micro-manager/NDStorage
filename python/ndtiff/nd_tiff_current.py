@@ -446,7 +446,7 @@ class NDTiffDataset():
             self._tile_height = self.image_height - self.summary_metadata["GridPixelOverlapY"]
 
 
-    def _add_storage_monitor_fn(self, storage_monitor_fn, callback_fn=None, debug=False):
+    def _add_storage_monitor_fn(self, acquisition, storage_monitor_fn, callback_fn=None, debug=False):
         """
         Add a callback function that gets called whenever a new image is writtern to disk (for acquisitions in
         progress only)
@@ -465,6 +465,7 @@ class NDTiffDataset():
         monitor_thread = threading.Thread(
             target=storage_monitor_fn,
             args=(
+                acquisition,
                 self,
                 push_port,
                 connected_event,
@@ -971,9 +972,10 @@ class NDTiffPyramidDataset():
                     col=col,
                     **kwargs)
 
-    def _add_storage_monitor_fn(self, storage_monitor_fn, callback_fn=None, debug=False):
+    # TODO: this needs to be cleaned up probably--seems like this functionality belongs in pycromanager
+    def _add_storage_monitor_fn(self, acquisition, storage_monitor_fn, callback_fn=None, debug=False):
         # Only valid for the full res data
-        return self.res_levels[0]._add_storage_monitor_fn(storage_monitor_fn, callback_fn, debug)
+        return self.res_levels[0]._add_storage_monitor_fn(acquisition, storage_monitor_fn, callback_fn, debug)
 
     def _add_index_entry(self, index_entry):
         # Pass through to full res data
