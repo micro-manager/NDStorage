@@ -411,8 +411,8 @@ class NDTiffDataset():
             self.channels = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
         else:
             # AcqEngJ
+            self.channels = {}
             if _CHANNEL_AXIS in self.axes.keys():
-                self.channels = {}
                 for key in self.index.keys():
                     axes = {axis: position for axis, position in key}
                     if (
