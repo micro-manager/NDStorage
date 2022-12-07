@@ -230,6 +230,16 @@ public final class ResolutionLevel {
       return tiffReadersByLabel_.keySet();
    }
 
+   private void finishIndexWriter() {
+      try {
+         if (indexWriter_ != null) {
+            indexWriter_.finishedWriting();
+         }
+      } catch (Exception e ) {
+         throw new RuntimeException(e);
+      }
+   }
+
    /**
     * Call this function when no more images are expected Finishes writing the
     * metadata file and closes it. After calling this function, the imagestorage
@@ -241,16 +251,13 @@ public final class ResolutionLevel {
       }
       newDataSet_ = false;
       if (fileSet_ == null) {
-         // Nothing to be done.
+         finishIndexWriter();
          finished_ = true;
          return;
       }
 
       try {
          fileSet_.finished();
-         if (indexWriter_ != null) {
-            indexWriter_.finishedWriting();
-         }
       } catch (Exception ex) {
          StringWriter sw = new StringWriter();
          PrintWriter pw = new PrintWriter(sw);
@@ -262,8 +269,7 @@ public final class ResolutionLevel {
          ex.printStackTrace();
          throw new RuntimeException(ex);
       }
-
-
+      finishIndexWriter();
       fileSet_ = null;
       finished_ = true;
    }
