@@ -652,13 +652,8 @@ class NDTiffDataset():
                             blocks[-1].append(tile)
 
                 if rgb:
-                    image = np.concatenate(
-                        [
-                            np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
-                            for row in blocks
-                        ],
-                        axis=0,
-                    )
+                    image = np.concatenate([np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
+                            for row in blocks],  axis=0)
                 else:
                     image = np.array(da.block(blocks))
             else:
@@ -670,8 +665,15 @@ class NDTiffDataset():
                 image = image[None]
             return image
 
+
         chunks = tuple([(1,) * len(axes_to_stack[axis]) for axis in axes_to_stack.keys()])
-        chunks += (w, h)
+        if stitched:
+            row_values = np.array(list(self.axes["row"]))
+            column_values = np.array(list(self.axes["column"]))
+            chunks += (w * (np.max(column_values) - np.min(column_values) + 1),
+                       h * (np.max(row_values) - np.min(row_values) + 1))
+        else:
+            chunks += (w, h)
         if rgb:
             chunks += (3,)
 
@@ -688,7 +690,7 @@ class NDTiffDataset():
 class NDTiffPyramidDataset():
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""
 
-    def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
+    def __init__(self, dataset_path=None, remote_storage_monitor=None):
         """
         Provides access to a NDTiffStorage pyramid dataset,
         either one currently being acquired or one on disk
@@ -697,8 +699,6 @@ class NDTiffPyramidDataset():
         ----------
         dataset_path : str
             Abosolute path of top level folder of a dataset on disk
-        full_res_only : bool
-            Only open the full resolution data to save time
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage. Users need not call this directly
         """
@@ -720,6 +720,9 @@ class NDTiffPyramidDataset():
             self.summary_metadata = self.res_levels[0].summary_metadata
             self.axes = self.res_levels[0].axes
 
+            self.overlap = (np.array([self.summary_metadata["GridPixelOverlapY"],
+                                        self.summary_metadata["GridPixelOverlapX"] ]))
+            self.res_levels[0].overlap = self.overlap
             return
 
         # Loading from disk
@@ -739,8 +742,6 @@ class NDTiffPyramidDataset():
             )
 
         for res_dir in res_dirs:
-            if full_res_only and res_dir != "Full resolution":
-                continue
             res_dir_path = os.path.join(dataset_path, res_dir)
             res_level = NDTiffDataset(dataset_path=res_dir_path)
             if res_dir == "Full resolution":
@@ -784,7 +785,7 @@ class NDTiffPyramidDataset():
         # pass through to full resolution, since only this is monitored in current implementation
         return self.res_levels[0]
 
-    def as_array(self, axes=None, stitched=False, **kwargs):
+    def as_array(self, axes=None, stitched=False, res_level=None, **kwargs):
         """
         Read all data image data as one big Dask array with last two axes as y, x and preceeding axes depending on data.
         The dask array is made up of memory-mapped numpy arrays, so the dataset does not need to be able to fit into RAM.
@@ -801,13 +802,45 @@ class NDTiffPyramidDataset():
             The order of axes supplied in this list will be the order of the axes of the returned dask array
         stitched : bool
             Lay out adjacent tiles next to one another to form a larger image (Default value = False)
+        res_level : int or None
+            the resolution level to return. If None, return all resolutions in a list
         **kwargs :
             names and integer positions of axes on which to slice data
         Returns
         -------
         dataset : dask array
         """
-        return self.res_levels[0].as_array(axes=axes, stitched=stitched, **kwargs)
+        if res_level is not None:
+            return self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
+        else:
+            tile_shape = np.array([self.image_height, self.image_width]) - self.overlap // 2
+            row_values = np.array(list(self.axes["row"]))
+            column_values = np.array(list(self.axes["column"]))
+            pixel_extent_min = np.array([np.min(row_values), np.min(column_values)]) * tile_shape
+            pixel_extent_max = np.array([np.max(row_values) - np.min(row_values) + 1,
+                                         np.max(column_values) - np.min(column_values) + 1]) * tile_shape
+            #TODO: account for negative tile indices
+            images = []
+            for res_level in set(self.res_levels.keys()):
+                if res_level == 0:
+                    images.append(self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs))
+                else:
+                    image = self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
+                    # crop away zero padding that extends pass where data is collected
+                    res_level_pixel_extent_min = pixel_extent_min // 2 ** res_level
+                    res_level_pixel_extent_max = pixel_extent_max // 2 ** res_level
+                    min_tile_index = res_level_pixel_extent_min // tile_shape
+                    max_tile_index = res_level_pixel_extent_max // tile_shape
+                    # get the pixel coordinates of the tiles that contain the data
+                    res_level_container_extent_min = min_tile_index * tile_shape
+                    res_level_container_extent_max = (max_tile_index + 1) * tile_shape
+                    offset = res_level_pixel_extent_min - res_level_container_extent_min
+                    image = image[..., offset[0]: offset[0] + res_level_pixel_extent_max[0],
+                            offset[1]: offset[1] + res_level_pixel_extent_max[1]]
+                    images.append(image)
+
+            return images
+
 
     def has_image(
         self,
