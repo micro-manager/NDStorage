@@ -218,7 +218,7 @@ class NDTiffDataset():
         print("\rDataset opened                ")
 
     def get_channel_names(self):
-        return self.channel_names.keys()
+        return list(self.channels.keys())
 
     def has_new_image(self):
         """
@@ -271,7 +271,7 @@ class NDTiffDataset():
         """
         with self._lock:
             return self._does_have_image(
-                _consolidate_axes(self.get_channel_names(), channel, channel_name, z, position, time, row, col, kwargs)
+                _consolidate_axes(self.channels, channel, channel_name, z, position, time, row, col, kwargs)
             )
 
     def read_image(
@@ -317,7 +317,7 @@ class NDTiffDataset():
 
         """
         with self._lock:
-            axes = _consolidate_axes(self.get_channel_names(),
+            axes = _consolidate_axes(self.channels,
                 channel, channel_name, z, position, time, row, col, kwargs
             )
 
@@ -363,7 +363,7 @@ class NDTiffDataset():
 
         """
         with self._lock:
-            axes = _consolidate_axes(self.get_channel_names(),
+            axes = _consolidate_axes(self.channels,
                 channel, channel_name, z, position, time, row, col, kwargs
             )
 
@@ -408,20 +408,20 @@ class NDTiffDataset():
     def _read_channel_names(self):
         if 'ChNames' in self.summary_metadata:
             # It was created by a MM MDA/Clojure acquistiion engine
-            self.channel_names = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
+            self.channels = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
         else:
             # AcqEngJ
+            self.channels = {}
             if _CHANNEL_AXIS in self.axes.keys():
-                self.channel_names = {}
                 for key in self.index.keys():
                     axes = {axis: position for axis, position in key}
                     if (
                         _CHANNEL_AXIS in axes.keys()
-                        and axes[_CHANNEL_AXIS] not in self.channel_names.values()
+                        and axes[_CHANNEL_AXIS] not in self.channels.values()
                     ):
                         channel_name = self.read_metadata(**axes)["Channel"]
-                        self.channel_names[channel_name] = axes[_CHANNEL_AXIS]
-                    if len(self.channel_names.values()) == len(self.axes[_CHANNEL_AXIS]):
+                        self.channels[channel_name] = axes[_CHANNEL_AXIS]
+                    if len(self.channels.values()) == len(self.axes[_CHANNEL_AXIS]):
                         break
 
 
@@ -758,7 +758,7 @@ class NDTiffPyramidDataset():
                 )
 
                 self.axes = res_level.axes
-                self._channel_names = res_level.channel_names
+                self._channel_names = res_level.channels
                 self.bytes_per_pixel = res_level.bytes_per_pixel
                 self.dtype = res_level.dtype
                 self.image_width = res_level.image_width
@@ -1027,7 +1027,7 @@ _Z_AXIS = "z"
 _TIME_AXIS = "time"
 _CHANNEL_AXIS = "channel"
 
-def _consolidate_axes(channel_names, channel, channel_name, z, position, time, row, col, kwargs):
+def _consolidate_axes(channels: dict, channel: int, channel_name: str, z, position, time, row, col, kwargs):
     """
     Get all axis names in a consistent format
     """
@@ -1035,7 +1035,11 @@ def _consolidate_axes(channel_names, channel, channel_name, z, position, time, r
     if channel is not None:
         axes[_CHANNEL_AXIS] = channel
     if channel_name is not None:
-        axes[_CHANNEL_AXIS] = channel_names[channel_name]
+        if channel_name in channels.keys():
+            axes[_CHANNEL_AXIS] = channels[channel_name]
+        else:
+            raise Exception(f'{channel_name} is not a valid channel name.'
+                            f'Valid channel names are: {list(channels.keys())}')
     if z is not None:
         axes[_Z_AXIS] = z
     if position is not None:
