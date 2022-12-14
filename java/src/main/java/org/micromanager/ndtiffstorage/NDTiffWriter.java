@@ -212,8 +212,6 @@ public class NDTiffWriter {
     * map entries for backwards reading capability A file that has been finished
     * should have everything it needs to be properly reopened in MM or by a
     * basic TIFF reader
-    *
-    * Returns a Future for when writing is done
     */
    public void finishedWriting() throws IOException, ExecutionException, InterruptedException {
       writeNullOffsetAfterLastImage();
