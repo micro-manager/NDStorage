@@ -140,21 +140,16 @@ class NDTiffDataset():
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage. User's need not call this directly
         """
-        self._tile_width = None
-        self._tile_height = None
+        # if it is in fact a pyramid, the parent class will handle this. I think this implies that
+        # resolution levels cannot be opened seperately and expected to stitch correctly when there
+        # is tile overlap
+        self._full_resolution = False
         self._lock = threading.RLock()
         if remote_storage_monitor is not None:
             # this dataset is a view of an active acquisition. The storage exists on the java side
             self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
             self._remote_storage_monitor = remote_storage_monitor
             self.summary_metadata = self._remote_storage_monitor.get_summary_metadata()
-            if "GridPixelOverlapX" in self.summary_metadata.keys():
-                self._tile_width = (
-                    self.summary_metadata["Width"] - self.summary_metadata["GridPixelOverlapX"]
-                )
-                self._tile_height = (
-                    self.summary_metadata["Height"] - self.summary_metadata["GridPixelOverlapY"]
-                )
             if dataset_path is None:
                 self.path = remote_storage_monitor.get_disk_location()
             else:
@@ -200,8 +195,10 @@ class NDTiffDataset():
         for axes_combo in self.index.keys():
             for axis, position in axes_combo:
                 if axis not in self.axes.keys():
-                    self.axes[axis] = set()
-                self.axes[axis].add(position)
+                    self.axes[axis] = []
+                self.axes[axis].append(position)
+                # get sorted unique elements
+                self.axes[axis] = sorted(list(set(self.axes[axis])))
 
         # figure out the mapping of channel name to position by reading image metadata
         print("\rReading channel names...", end="")
@@ -394,8 +391,9 @@ class NDTiffDataset():
             # update the axes that have been seen
             for axis_name in axes.keys():
                 if axis_name not in self.axes.keys():
-                    self.axes[axis_name] = set()
-                self.axes[axis_name].add(axes[axis_name])
+                    self.axes[axis_name] = []
+                self.axes[axis_name].append(axes[axis_name])
+                self.axes[axis_name] = sorted(list(set(self.axes[axis_name])))
 
             # update the map of channel names to channel indices
             self._read_channel_names()
@@ -441,9 +439,6 @@ class NDTiffDataset():
 
         self.image_width = first_index["image_width"]
         self.image_height = first_index["image_height"]
-        if "GridPixelOverlapX" in self.summary_metadata:
-            self._tile_width = self.image_width - self.summary_metadata["GridPixelOverlapX"]
-            self._tile_height = self.image_height - self.summary_metadata["GridPixelOverlapY"]
 
 
     def _add_storage_monitor_fn(self, acquisition, storage_monitor_fn, callback_fn=None, debug=False):
@@ -601,8 +596,13 @@ class NDTiffDataset():
         """
         if stitched and "GridPixelOverlapX" not in self.summary_metadata:
             raise Exception('This is not a stitchable dataset')
-        w = self.image_width if not stitched else self._tile_width
-        h = self.image_height if not stitched else self._tile_height
+        if not stitched or not self._full_resolution:
+            w = self.image_width
+            h = self.image_height
+        elif self._full_resolution:
+            w = self.image_width - self.overlap[1]
+            h = self.image_height - self.overlap[0]
+
         self._empty_tile = (
             np.zeros((h, w), self.dtype)
             if self.bytes_per_pixel != 3
@@ -634,6 +634,9 @@ class NDTiffDataset():
                 # get spatial layout of position indices
                 row_values = np.array(list(self.axes["row"]))
                 column_values = np.array(list(self.axes["column"]))
+                # fill in missing values
+                row_values = np.arange(np.min(row_values), np.max(row_values) + 1)
+                column_values = np.arange(np.min(column_values), np.max(column_values) + 1)
                 # make nested list of rows and columns
                 blocks = []
                 for row in row_values:
@@ -644,7 +647,9 @@ class NDTiffDataset():
                             blocks[-1].append(self._empty_tile)
                         else:
                             tile = self.read_image(**axes, **axes_to_slice, row=row, column=column, memmapped=True)
-                            if self.half_overlap[0] != 0:
+                            # remove half of the overlap around each tile so that that image stitches correctly
+                            # only need this for full resoution because downsampled ones already have the edges removed
+                            if self.half_overlap[0] != 0 and self._full_resolution:
                                 tile = tile[
                                        self.half_overlap[0]: -self.half_overlap[0],
                                        self.half_overlap[1]: -self.half_overlap[1],
@@ -670,8 +675,8 @@ class NDTiffDataset():
         if stitched:
             row_values = np.array(list(self.axes["row"]))
             column_values = np.array(list(self.axes["column"]))
-            chunks += (w * (np.max(column_values) - np.min(column_values) + 1),
-                       h * (np.max(row_values) - np.min(row_values) + 1))
+            chunks += (h * (np.max(row_values) - np.min(row_values) + 1),
+                       w * (np.max(column_values) - np.min(column_values) + 1))
         else:
             chunks += (w, h)
         if rgb:
@@ -704,16 +709,16 @@ class NDTiffPyramidDataset():
         """
         self._lock = threading.RLock()
         if remote_storage_monitor is not None:
-            self._remote_storage_monitor = None # IT belongs to the full resolution subclass
+            self._remote_storage_monitor = None # It belongs to the full resolution subclass
             # this dataset is a view of an active acquisition. The storage exists on the java side
             self.path = remote_storage_monitor.get_disk_location()
             self.path += "" if self.path[-1] == os.sep else os.sep
 
             with self._lock:
-                self.res_levels = {
-                    0: NDTiffDataset(remote_storage_monitor=remote_storage_monitor,
+                full_res = NDTiffDataset(remote_storage_monitor=remote_storage_monitor,
                                      dataset_path=self.path + "Full resolution" + os.sep)
-                }
+                self.res_levels = {0: full_res}
+                full_res._full_resolution = True
             # No information related higher res levels when remote storage monitoring right now
 
             #Copy stuff from the full res class for convenience
@@ -723,6 +728,7 @@ class NDTiffPyramidDataset():
             self.overlap = (np.array([self.summary_metadata["GridPixelOverlapY"],
                                         self.summary_metadata["GridPixelOverlapX"] ]))
             self.res_levels[0].overlap = self.overlap
+            # TODO maybe open other resoutions here too
             return
 
         # Loading from disk
@@ -747,6 +753,7 @@ class NDTiffPyramidDataset():
             if res_dir == "Full resolution":
                 with self._lock:
                     self.res_levels[0] = res_level
+                res_level._full_resolution = True
                 # get summary metadata and index tree from full resolution image
                 self.summary_metadata = res_level.summary_metadata
 
@@ -765,6 +772,7 @@ class NDTiffPyramidDataset():
                 self.image_height = res_level.image_height
 
             else:
+                res_level._full_resolution = False
                 with self._lock:
                     self.res_levels[int(np.log2(int(res_dir.split("x")[1])))] = res_level
 
@@ -810,34 +818,54 @@ class NDTiffPyramidDataset():
         -------
         dataset : dask array
         """
+        tile_shape = np.array([self.image_height, self.image_width]) - self.overlap
+
+
+        def get_tile_index_from_pixel_index(pixel_index):
+            """
+            :param pixel_index: pixel index at relevant resolution
+            """
+            negative_mask = pixel_index < 0
+            # positive
+            tile_index = pixel_index // tile_shape
+            # negative
+            tile_index[negative_mask] = (-1 - (np.abs(1 + pixel_index) // tile_shape))[negative_mask]
+            return tile_index
+
+
         if res_level is not None:
             return self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
         else:
-            tile_shape = np.array([self.image_height, self.image_width]) - self.overlap // 2
             row_values = np.array(list(self.axes["row"]))
             column_values = np.array(list(self.axes["column"]))
             pixel_extent_min = np.array([np.min(row_values), np.min(column_values)]) * tile_shape
-            pixel_extent_max = np.array([np.max(row_values) - np.min(row_values) + 1,
-                                         np.max(column_values) - np.min(column_values) + 1]) * tile_shape
-            #TODO: account for negative tile indices
+            pixel_extent_max = np.array([np.max(row_values) + 1, np.max(column_values) + 1]) * tile_shape
             images = []
             for res_level in set(self.res_levels.keys()):
                 if res_level == 0:
-                    images.append(self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs))
+                    image = self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
+                    images.append(image)
                 else:
                     image = self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
                     # crop away zero padding that extends pass where data is collected
-                    res_level_pixel_extent_min = pixel_extent_min // 2 ** res_level
-                    res_level_pixel_extent_max = pixel_extent_max // 2 ** res_level
-                    min_tile_index = res_level_pixel_extent_min // tile_shape
-                    max_tile_index = res_level_pixel_extent_max // tile_shape
+                    res_level_pixel_extent_min = (pixel_extent_min / 2 ** res_level).astype(np.int)
+                    res_level_pixel_extent_max = (pixel_extent_max / 2 ** res_level).astype(np.int)
+                    if np.min(np.stack([res_level_pixel_extent_max - res_level_pixel_extent_min,
+                                        res_level_pixel_extent_max - res_level_pixel_extent_min])) < 16:
+                        # Not worth it to use ones this small
+                        break
+                    # Subtract one to get pixel index from max extent because min extent is inclusive but max exclusive
+                    min_tile_index = get_tile_index_from_pixel_index(res_level_pixel_extent_min)
+                    max_tile_index = get_tile_index_from_pixel_index(res_level_pixel_extent_max - 1)
                     # get the pixel coordinates of the tiles that contain the data
                     res_level_container_extent_min = min_tile_index * tile_shape
                     res_level_container_extent_max = (max_tile_index + 1) * tile_shape
                     offset = res_level_pixel_extent_min - res_level_container_extent_min
-                    image = image[..., offset[0]: offset[0] + res_level_pixel_extent_max[0],
-                            offset[1]: offset[1] + res_level_pixel_extent_max[1]]
+                    extent = res_level_pixel_extent_max - res_level_pixel_extent_min
+                    image = image[..., offset[0]: offset[0] + extent[0],
+                            offset[1]: offset[1] + extent[1]]
                     images.append(image)
+
 
             return images
 
