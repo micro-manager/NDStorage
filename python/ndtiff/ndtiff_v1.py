@@ -625,6 +625,12 @@ class NDTiff_v1():
 
         print("\rDataset opened          ")
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+    
     def as_array(self, stitched=False, verbose=False):
         """
         Read all data image data as one big Dask array with last two axes as y, x and preceeding axes depending on data.

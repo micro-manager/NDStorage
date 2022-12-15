@@ -75,6 +75,12 @@ class _MultipageTiffReader:
         summary_md = json.loads(self._read(24, 24 + summary_md_length))
         return summary_md, first_ifd_offset
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+    
     def _read(self, start, end):
         """
         convert to python ints
