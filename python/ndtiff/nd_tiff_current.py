@@ -67,8 +67,8 @@ class _SingleNDTiffReader:
 
         # read custom stuff: header, summary md
         # int.from_bytes(self.mmap_file[24:28], sys.byteorder) # should be equal to 483729 starting in version 1
-        self._major_version = int.from_bytes(self._read(12, 16), sys.byteorder)
-        self._minor_version = int.from_bytes(self._read(16, 20), sys.byteorder)
+        self.major_version = int.from_bytes(self._read(12, 16), sys.byteorder)
+        self.minor_version = int.from_bytes(self._read(16, 20), sys.byteorder)
 
         summary_md_header, summary_md_length = np.frombuffer(self._read(20, 28), dtype=np.uint32)
         if summary_md_header != self.SUMMARY_MD_HEADER:
@@ -178,7 +178,10 @@ class NDTiffDataset():
         for tiff in tiff_names:
             print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
             count += 1
-            self._readers_by_filename[tiff.split(os.sep)[-1]] = _SingleNDTiffReader(tiff)
+            new_reader = _SingleNDTiffReader(tiff)
+            self._readers_by_filename[tiff.split(os.sep)[-1]] = new_reader
+            # Should be the same on every file so resetting them is fine
+            self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
         self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
 
@@ -384,9 +387,11 @@ class NDTiffDataset():
             _, axes, index_entry = self._read_single_index_entry(data, self.index)
 
             if index_entry["filename"] not in self._readers_by_filename:
-                self._readers_by_filename[index_entry["filename"]] = _SingleNDTiffReader(
-                    self.path + index_entry["filename"]
-                )
+                new_reader = _SingleNDTiffReader(self.path + index_entry["filename"] )
+                self._readers_by_filename[index_entry["filename"]] = new_reader
+                # Should be the same on every file so resetting them is fine
+                self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
+
 
             # update the axes that have been seen
             for axis_name in axes.keys():
