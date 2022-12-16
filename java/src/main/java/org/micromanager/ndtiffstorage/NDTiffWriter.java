@@ -35,10 +35,6 @@ import javax.swing.*;
 
 public class NDTiffWriter {
 
-   private static final int MAJOR_VERSION = 3;
-   private static final int MINOR_VERSION = 0;
-
-
 //   private static final long BYTES_PER_MEG = 1048576;
 //   private static final long MAX_FILE_SIZE = 15*BYTES_PER_MEG;
    private static final long BYTES_PER_GIG = 1073741824;
@@ -190,8 +186,8 @@ public class NDTiffWriter {
 
       //12 bytes for unique identifier and major version
       headerBuffer.putInt(8, 483729);
-      headerBuffer.putInt(12, MAJOR_VERSION);
-      headerBuffer.putInt(16, MINOR_VERSION);
+      headerBuffer.putInt(12, VERSION.MAJOR);
+      headerBuffer.putInt(16, VERSION.MINOR);
 
       //8 bytes for summaryMD header  summary md length + 
       headerBuffer.putInt(20, SUMMARY_MD_HEADER);
