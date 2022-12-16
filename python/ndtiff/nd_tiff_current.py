@@ -12,6 +12,26 @@ import warnings
 import struct
 import threading
 
+_POSITION_AXIS = "position"
+_ROW_AXIS = "row"
+_COLUMN_AXIS = "column"
+_Z_AXIS = "z"
+_TIME_AXIS = "time"
+_CHANNEL_AXIS = "channel"
+
+_AXIS_ORDER = {_ROW_AXIS: 7,
+               _COLUMN_AXIS: 6,
+               _POSITION_AXIS: 5, 
+               _TIME_AXIS: 4, 
+               _CHANNEL_AXIS:3, 
+               _Z_AXIS:2}
+
+def _get_axis_order_key(dict_item):
+    axis_name = dict_item[0]
+    if axis_name in _AXIS_ORDER.keys():
+        return _AXIS_ORDER[axis_name]
+    else:
+        return 3  # stack next to channel axes
 
 class _SingleNDTiffReader:
     """
@@ -190,15 +210,18 @@ class NDTiffDataset():
             if "GridPixelOverlapY" in self.summary_metadata
             else None
         )
-
-        self.axes = {}
+        
+        self._axes = {}
         for axes_combo in self.index.keys():
             for axis, position in axes_combo:
-                if axis not in self.axes.keys():
-                    self.axes[axis] = []
-                self.axes[axis].append(position)
+                if axis not in self._axes.keys():
+                    self._axes[axis] = []
+                self._axes[axis].append(position)
                 # get sorted unique elements
-                self.axes[axis] = sorted(list(set(self.axes[axis])))
+                self._axes[axis] = sorted(list(set(self._axes[axis])))
+        # Sort axes according to _AXIS_ORDER
+        self.axes = dict(sorted(self._axes.items(), key=_get_axis_order_key, reverse=True))
+        
 
         # figure out the mapping of channel name to position by reading image metadata
         print("\rReading channel names...", end="")
@@ -590,8 +613,8 @@ class NDTiffDataset():
         Parameters
         ----------
         axes : list
-            list of axes names over which to iterate and merge into a stacked array. If None, all axes will be used.
-            The order of axes supplied in this list will be the order of the axes of the returned dask array
+            list of axes names over which to iterate and merge into a stacked array. The order of axes supplied in this 
+            list will be the order of the axes of the returned dask array. If None, all axes will be used in PTCZYX order.
         stitched : bool
             If true and tiles were acquired in a grid, lay out adjacent tiles next to one another (Default value = False)
         **kwargs :
@@ -1052,14 +1075,6 @@ class NDTiffPyramidDataset():
         with self._lock:
             for res_level in self.res_levels:
                 res_level.close()
-
-
-_POSITION_AXIS = "position"
-_ROW_AXIS = "row"
-_COLUMN_AXIS = "column"
-_Z_AXIS = "z"
-_TIME_AXIS = "time"
-_CHANNEL_AXIS = "channel"
 
 def _consolidate_axes(channels: dict, channel: int, channel_name: str, z, position, time, row, col, kwargs):
     """
