@@ -25,6 +25,7 @@ import java.io.StringWriter;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -796,7 +797,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          debugLogger_.accept("waiting for writing task queue complete");
       }
 
-      byte[] metadataBytes = metadata.toString().getBytes();
+      byte[] metadataBytes = metadata.toString().getBytes(StandardCharsets.UTF_8);
       String indexKey = IndexEntryData.serializeAxes(axessss);
       fullResStorage_.addToWritePendingImages(indexKey, ti,
               new EssentialImageMetadata(imageWidth, imageHeight, byteDepth_, rgb));
