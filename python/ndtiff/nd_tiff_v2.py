@@ -12,6 +12,26 @@ import warnings
 import struct
 import threading
 
+_POSITION_AXIS = "position"
+_ROW_AXIS = "row"
+_COLUMN_AXIS = "column"
+_Z_AXIS = "z"
+_TIME_AXIS = "time"
+_CHANNEL_AXIS = "channel"
+
+_AXIS_ORDER = {_ROW_AXIS: 7,
+               _COLUMN_AXIS: 6,
+               _POSITION_AXIS: 5, 
+               _TIME_AXIS: 4, 
+               _CHANNEL_AXIS:3, 
+               _Z_AXIS:2}
+
+def _get_axis_order_key(dict_item):
+    axis_name = dict_item[0]
+    if axis_name in _AXIS_ORDER.keys():
+        return _AXIS_ORDER[axis_name]
+    else:
+        return 3  # stack next to channel axes
 
 class _MultipageTiffReader:
     """
@@ -283,13 +303,6 @@ class _ResolutionLevel:
 class NDTiff_v2_0():
     """Class that opens a single NDTiffStorage dataset"""
 
-    _POSITION_AXIS = "position"
-    _ROW_AXIS = "row"
-    _COLUMN_AXIS = "column"
-    _Z_AXIS = "z"
-    _TIME_AXIS = "time"
-    _CHANNEL_AXIS = "channel"
-
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
         """
         Creat a Object providing access to and NDTiffStorage dataset, either one currently being acquired or one on disk
@@ -372,12 +385,16 @@ class NDTiff_v2_0():
                     else None
                 )
 
-                self.axes = {}
+                self._axes = {}
                 for axes_combo in res_level.index.keys():
                     for axis, position in axes_combo:
-                        if axis not in self.axes.keys():
-                            self.axes[axis] = set()
-                        self.axes[axis].add(position)
+                        if axis not in self._axes.keys():
+                            self._axes[axis] = set()
+                        self._axes[axis].add(position)
+                        # get sorted unique elements
+                        self._axes[axis] = sorted(list(set(self._axes[axis])))
+                # Sort axes according to _AXIS_ORDER
+                self.axes = dict(sorted(self._axes.items(), key=_get_axis_order_key, reverse=True))
 
                 # figure out the mapping of channel name to position by reading image metadata
                 print("\rReading channel names...", end="")

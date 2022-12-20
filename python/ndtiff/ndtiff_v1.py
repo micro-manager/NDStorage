@@ -11,6 +11,12 @@ import dask.array as da
 import warnings
 import struct
 
+_POSITION_AXIS = "position"
+_ROW_AXIS = "row"
+_COLUMN_AXIS = "column"
+_Z_AXIS = "z"
+_TIME_AXIS = "time"
+_CHANNEL_AXIS = "channel"
 
 class _MultipageTiffReader:
     # Class corresponsing to a single multipage tiff file in a Micro-Magellan dataset. Pass the full path of the TIFF to
@@ -393,11 +399,6 @@ class _ResolutionLevel:
 class NDTiff_v1():
     """Class that opens a single NDTiffStorage dataset (major versions 0 and 1)"""
 
-    _POSITION_AXIS = "position"
-    _Z_AXIS = "z"
-    _TIME_AXIS = "time"
-    _CHANNEL_AXIS = "channel"
-
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage=None):
         self._tile_width = None
         self._tile_height = None
@@ -469,10 +470,10 @@ class NDTiff_v1():
                 # the c here refers to super channels, encompassing all non-tzp axes in addition to channels
                 # map of axis names to values where data exists
                 self.axes = {
-                    self._Z_AXIS: set(),
-                    self._TIME_AXIS: set(),
                     self._POSITION_AXIS: set(),
+                    self._TIME_AXIS: set(),
                     self._CHANNEL_AXIS: set(),
+                    self._Z_AXIS: set(),
                 }
 
                 # Need to map "super channels", which absorb all non channel/z/time/position axes to channel indices
@@ -543,7 +544,7 @@ class NDTiff_v1():
                                 self.axes[self._TIME_AXIS].add(t)
                                 for p in c_z_t_p_tree[c][z][t]:
                                     self.axes[self._POSITION_AXIS].add(p)
-                                    if c not in self.axes["channel"]:
+                                    if c not in self.axes[self._CHANNEL_AXIS]:
                                         metadata = self.res_levels[0].read_metadata(
                                             channel_index=c, z_index=z, t_index=t, pos_index=p
                                         )
