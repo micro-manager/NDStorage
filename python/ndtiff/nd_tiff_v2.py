@@ -389,8 +389,8 @@ class NDTiff_v2_0():
                 for axes_combo in res_level.index.keys():
                     for axis, position in axes_combo:
                         if axis not in self._axes.keys():
-                            self._axes[axis] = set()
-                        self._axes[axis].add(position)
+                            self._axes[axis] = []
+                        self._axes[axis].append(position)
                         # get sorted unique elements
                         self._axes[axis] = sorted(list(set(self._axes[axis])))
                 # Sort axes according to _AXIS_ORDER
@@ -419,17 +419,17 @@ class NDTiff_v2_0():
         print("\rDataset opened                ")
 
     def _read_channel_names(self):
-        if self._CHANNEL_AXIS in self.axes.keys():
-            self._channel_names = {}
+        self.channels = {}
+        if _CHANNEL_AXIS in self.axes.keys():
             for key in self.res_levels[0].index.keys():
                 axes = {axis: position for axis, position in key}
                 if (
-                    self._CHANNEL_AXIS in axes.keys()
-                    and axes[self._CHANNEL_AXIS] not in self._channel_names.values()
+                    _CHANNEL_AXIS in axes.keys()
+                    and axes[_CHANNEL_AXIS] not in self.channels.values()
                 ):
                     channel_name = self.res_levels[0].read_metadata(axes)["Channel"]
-                    self._channel_names[channel_name] = axes[self._CHANNEL_AXIS]
-                if len(self._channel_names.values()) == len(self.axes[self._CHANNEL_AXIS]):
+                    self.channels[channel_name] = axes[_CHANNEL_AXIS]
+                if len(self.channels.values()) == len(self.axes[_CHANNEL_AXIS]):
                     break
 
     def _parse_first_index(self, first_index):
@@ -632,7 +632,7 @@ class NDTiff_v2_0():
         """
         with self._lock:
             return self.res_levels[0].has_image(
-                self._consolidate_axes(channel, channel_name, z, position, time, row, col, kwargs)
+                _consolidate_axes(self.channels, channel, channel_name, z, position, time, row, col, kwargs)
             )
 
     def read_image(
@@ -682,7 +682,7 @@ class NDTiff_v2_0():
 
         """
         with self._lock:
-            axes = self._consolidate_axes(
+            axes = _consolidate_axes(self.channels,
                 channel, channel_name, z, position, time, row, col, kwargs
             )
 
@@ -746,24 +746,28 @@ class NDTiff_v2_0():
 
     def get_channel_names(self):
         with self._lock:
-            return self._channel_names.keys()
+            return list(self.channels.keys())
 
-    def _consolidate_axes(self, channel, channel_name, z, position, time, row, col, kwargs):
-        axes = {}
-        if channel is not None:
-            axes[self._CHANNEL_AXIS] = channel
-        if channel_name is not None:
-            axes[self._CHANNEL_AXIS] = self._channel_names[channel_name]
-        if z is not None:
-            axes[self._Z_AXIS] = z
-        if position is not None:
-            axes[self._POSITION_AXIS] = position
-        if time is not None:
-            axes[self._TIME_AXIS] = time
-        if row is not None:
-            axes[self._ROW_AXIS] = row
-        if col is not None:
-            axes[self._COLUMN_AXIS] = col
-        for other_axis_name in kwargs.keys():
-            axes[other_axis_name] = kwargs[other_axis_name]
-        return axes
+def _consolidate_axes(channels: dict, channel: int, channel_name: str, z, position, time, row, col, kwargs):
+    axes = {}
+    if channel is not None:
+        axes[_CHANNEL_AXIS] = channel
+    if channel_name is not None:
+        if channel_name in channels.keys():
+            axes[_CHANNEL_AXIS] = channels[channel_name]
+        else:
+            raise Exception(f'{channel_name} is not a valid channel name.'
+                            f'Valid channel names are: {list(channels.keys())}')
+    if z is not None:
+        axes[_Z_AXIS] = z
+    if position is not None:
+        axes[_POSITION_AXIS] = position
+    if time is not None:
+        axes[_TIME_AXIS] = time
+    if row is not None:
+        axes[_ROW_AXIS] = row
+    if col is not None:
+        axes[_COLUMN_AXIS] = col
+    for other_axis_name in kwargs.keys():
+        axes[other_axis_name] = kwargs[other_axis_name]
+    return axes
