@@ -23,11 +23,11 @@ class StorageMD {
    private static final String TILED_STORAGE = "TiledImageStorage";
 
 
-   static HashMap<String, Integer> getAxes(JSONObject tags) {
+   static HashMap<String, Object> getAxes(JSONObject tags) {
       try {
          JSONObject axes = tags.getJSONObject(AXES);
          Iterator<String> iter = axes.keys();
-         HashMap<String, Integer> axesMap = new HashMap<String, Integer>();
+         HashMap<String, Object> axesMap = new HashMap<String, Object>();
          while (iter.hasNext()) {
             String key = iter.next();
             axesMap.put(key, axes.getInt(key));

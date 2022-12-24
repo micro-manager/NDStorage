@@ -104,7 +104,7 @@ public class IndexEntryData {
          byte[] axesBuffer = new byte[(int) axesLength];
          buffer.get(axesBuffer);
          String axesString = new String(axesBuffer);
-         HashMap<String, Integer> axes = IndexEntryData.deserializeAxes(axesString);
+         HashMap<String, Object> axes = IndexEntryData.deserializeAxes(axesString);
          long filenameLength = buffer.getInt();
          byte[] filenameBuffer = new byte[(int)filenameLength];
          buffer.get(filenameBuffer);
@@ -163,10 +163,10 @@ public class IndexEntryData {
       return buffer;
    }
 
-   public static HashMap<String, Integer> deserializeAxes(String s) {
+   public static HashMap<String, Object> deserializeAxes(String s) {
       try {
          JSONObject json = new JSONObject(s);
-         HashMap<String, Integer> axes = new HashMap<String, Integer>();
+         HashMap<String, Object> axes = new HashMap<String, Object>();
          Iterator<String> keys = json.keys();
          keys.forEachRemaining(new Consumer<String>() {
             @Override
@@ -184,7 +184,7 @@ public class IndexEntryData {
       }
    }
 
-   public static String serializeAxes(HashMap<String, Integer> axes) {
+   public static String serializeAxes(HashMap<String, Object> axes) {
       try {
          JSONObject json = new JSONObject();
          //put into a new set to sort
