@@ -172,7 +172,7 @@ public class IndexEntryData {
             @Override
             public void accept(String s) {
                try {
-                  axes.put(s, json.getInt(s));
+                  axes.put(s, json.get(s));
                } catch (JSONException e) {
                   throw new RuntimeException(e);
                }

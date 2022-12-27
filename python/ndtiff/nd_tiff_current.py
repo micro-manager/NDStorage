@@ -11,7 +11,14 @@ import dask.array as da
 import warnings
 import struct
 import threading
+import inspect
 
+_POSITION_AXIS = "position"
+_ROW_AXIS = "row"
+_COLUMN_AXIS = "column"
+_Z_AXIS = "z"
+_TIME_AXIS = "time"
+_CHANNEL_AXIS = "channel"
 
 class _SingleNDTiffReader:
     """
@@ -146,7 +153,7 @@ class NDTiffDataset():
         self._full_resolution = False
         self._lock = threading.RLock()
         if remote_storage_monitor is not None:
-            # this dataset is a view of an active acquisition. The storage exists on the java side
+            # this dataset is a view of an active acquisition. Image data is being written by code on the Java side
             self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
             self._remote_storage_monitor = remote_storage_monitor
             self.summary_metadata = self._remote_storage_monitor.get_summary_metadata()
@@ -156,6 +163,7 @@ class NDTiffDataset():
                 self.path = dataset_path #Overriden by pyramid storage class creating this
             self.path += "" if self.path[-1] == os.sep else os.sep
             self.axes = {}
+            self.axes_types = {}
             self.index = {}
             self._readers_by_filename = {}
             return
@@ -195,19 +203,18 @@ class NDTiffDataset():
         )
 
         self.axes = {}
+        self.axes_types = {}
         for axes_combo in self.index.keys():
             for axis, position in axes_combo:
                 if axis not in self.axes.keys():
                     self.axes[axis] = []
+                    self.axes_types[axis] = type(position)
                 self.axes[axis].append(position)
                 # get sorted unique elements
                 self.axes[axis] = sorted(list(set(self.axes[axis])))
 
         # figure out the mapping of channel name to position by reading image metadata
-        print("\rReading channel names...", end="")
-        self._read_channel_names()
-        print("\rFinished reading channel names", end="")
-
+        self._parse_string_axes()
 
         # get information about image width and height, assuming that they are consistent for whole dataset
         # (which is not neccessarily true but convenient when it is)
@@ -224,7 +231,10 @@ class NDTiffDataset():
         self.close()
     
     def get_channel_names(self):
-        return list(self.channels.keys())
+        """
+        :return: list of channel names (strings)
+        """
+        return list(self._channels.keys())
 
     def has_new_image(self):
         """
@@ -240,11 +250,10 @@ class NDTiffDataset():
 
     def has_image(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
-        channel_name=None,
         row=None,
         col=None,
         **kwargs
@@ -253,7 +262,7 @@ class NDTiffDataset():
 
         Parameters
         ----------
-        channel : int
+        channel : int or str
             index of the channel, if applicable (Default value = None)
         z : int
             index of z slice, if applicable (Default value = None)
@@ -261,8 +270,6 @@ class NDTiffDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name : str
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
         col : int
@@ -276,19 +283,17 @@ class NDTiffDataset():
             indicating whether the dataset has an image matching the specifications
         """
         with self._lock:
-            return self._does_have_image(
-                _consolidate_axes(self.channels, channel, channel_name, z, position, time, row, col, kwargs)
-            )
+            return self._does_have_image(self._consolidate_axes(
+                channel, z, position, time, row, col, **kwargs))
 
     def read_image(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
         row=None,
         col=None,
-        channel_name=None,
         memmapped=False,
         **kwargs
     ):
@@ -297,7 +302,7 @@ class NDTiffDataset():
 
         Parameters
         ----------
-        channel : int
+        channel : int or str
             index of the channel, if applicable (Default value = None)
         z : int
             index of z slice, if applicable (Default value = None)
@@ -305,8 +310,6 @@ class NDTiffDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name :
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
         col : int
@@ -323,19 +326,16 @@ class NDTiffDataset():
 
         """
         with self._lock:
-            axes = _consolidate_axes(self.channels,
-                channel, channel_name, z, position, time, row, col, kwargs
-            )
+            axes = self._consolidate_axes(channel, z, position, time, row, col, **kwargs )
 
             return self._do_read_image(axes, memmapped)
 
     def read_metadata(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
-        channel_name=None,
         row=None,
         col=None,
         **kwargs
@@ -345,7 +345,7 @@ class NDTiffDataset():
 
         Parameters
         ----------
-        channel : int
+        channel : int or str
             index of the channel, if applicable (Default value = None)
         z : int
             index of z slice, if applicable (Default value = None)
@@ -353,8 +353,6 @@ class NDTiffDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name :
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
         col : int
@@ -369,8 +367,8 @@ class NDTiffDataset():
 
         """
         with self._lock:
-            axes = _consolidate_axes(self.channels,
-                channel, channel_name, z, position, time, row, col, kwargs
+            axes = self._consolidate_axes(
+                channel, z, position, time, row, col, **kwargs
             )
 
             return self._do_read_metadata(axes)
@@ -388,6 +386,8 @@ class NDTiffDataset():
     def _add_index_entry(self, data):
         """
         Add entry for a image that has been recieved and is now on disk
+        This is used to get access to a dataset that is currently being
+        written by java side
         """
         with self._lock:
             _, axes, index_entry = self._read_single_index_entry(data, self.index)
@@ -403,35 +403,77 @@ class NDTiffDataset():
             for axis_name in axes.keys():
                 if axis_name not in self.axes.keys():
                     self.axes[axis_name] = []
+                    self.axes_types = type(axes[axis_name])
                 self.axes[axis_name].append(axes[axis_name])
                 self.axes[axis_name] = sorted(list(set(self.axes[axis_name])))
 
             # update the map of channel names to channel indices
-            self._read_channel_names()
+            self._parse_string_axes()
 
         if not hasattr(self, 'image_width'):
             self._parse_first_index(index_entry)
 
         return axes
 
-    def _read_channel_names(self):
-        if 'ChNames' in self.summary_metadata:
-            # It was created by a MM MDA/Clojure acquistiion engine
-            self.channels = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
+    def _consolidate_axes(self, channel: int or str, z: int, position: int,
+                          time: int, row: int, col: int, **kwargs):
+        """
+        Pack axes into a convenient format
+        """
+        if ('channel_name' in kwargs):
+            warnings.warn('channel_name is deprecated, use "channel" instead')
+            channel = kwargs['channel_name']
+
+        axis_positions = {'channel': channel, 'z': z, 'position': position,
+                    'time': time, 'row': row, 'col': col, **kwargs}
+        # ignore ones that are None
+        axis_positions = {n: axis_positions[n] for n in axis_positions.keys() if axis_positions[n] is not None}
+        for axis_name in axis_positions.keys():
+            # convert any string-valued axes passed as ints into strings
+            if self.axes_types[axis_name] == str and type(axis_positions[axis_name]) == int:
+                axis_positions[axis_name] = self._string_axes_values[axis_name][axis_positions[axis_name]]
+
+        return axis_positions
+
+    def _parse_string_axes(self):
+        """
+        As of NDTiff 3.2, axes are allowed to take string values: e.g. {'channel': 'DAPI'}
+        This is allowed on any axis. This function returns a tuple of possible values along
+        the string axis in order to be able to interconvert integer values and string values.
+        """
+        # iterate through the key_combos for each image
+        if self.major_version >= 3 and self.minor_version >= 2:
+            self._string_axes_values = {axis_name: [] for axis_name in self.axes_types.keys()
+                                        if self.axes_types[axis_name] is str}
+            for key in self.index.keys():
+                for axis_name, position in key:
+                    if axis_name in self._string_axes_values.keys() and \
+                            position not in self._string_axes_values[axis_name]:
+                        self._string_axes_values[axis_name].append(position)
+            if _CHANNEL_AXIS in self._string_axes_values:
+                self._channels = {name: self._string_axes_values[_CHANNEL_AXIS].index(name)
+                                  for name in self._string_axes_values[_CHANNEL_AXIS]}
+            else:
+                self._channels = {}
         else:
-            # AcqEngJ
-            self.channels = {}
-            if _CHANNEL_AXIS in self.axes.keys():
-                for key in self.index.keys():
-                    axes = {axis: position for axis, position in key}
-                    if (
-                        _CHANNEL_AXIS in axes.keys()
-                        and axes[_CHANNEL_AXIS] not in self.channels.values()
-                    ):
-                        channel_name = self.read_metadata(**axes)["Channel"]
-                        self.channels[channel_name] = axes[_CHANNEL_AXIS]
-                    if len(self.channels.values()) == len(self.axes[_CHANNEL_AXIS]):
-                        break
+            # before string-valued axes were allowed in NDTiff 3.1
+            if 'ChNames' in self.summary_metadata:
+                # It was created by a MM MDA/Clojure acquistiion engine
+                self._channels = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
+            else:
+                # AcqEngJ
+                self._channels = {}
+                if _CHANNEL_AXIS in self.axes.keys():
+                    for key in self.index.keys():
+                        axes = {axis: position for axis, position in key}
+                        if (
+                            _CHANNEL_AXIS in axes.keys()
+                            and axes[_CHANNEL_AXIS] not in self._channels.values()
+                        ):
+                            channel_name = self.read_metadata(**axes)["Channel"]
+                            self._channels[channel_name] = axes[_CHANNEL_AXIS]
+                        if len(self._channels.values()) == len(self.axes[_CHANNEL_AXIS]):
+                            break
 
 
     def _parse_first_index(self, first_index):
@@ -641,7 +683,6 @@ class NDTiffDataset():
             axes = {key: block_id[i] for i, key in enumerate(axes_to_stack.keys())}
             if stitched:
                 # Combine all rows and cols into one stitched image
-                self.half_overlap = (self.overlap[0] // 2, self.overlap[1] // 2)
                 # get spatial layout of position indices
                 row_values = np.array(list(self.axes["row"]))
                 column_values = np.array(list(self.axes["column"]))
@@ -660,11 +701,10 @@ class NDTiffDataset():
                             tile = self.read_image(**axes, **axes_to_slice, row=row, column=column, memmapped=True)
                             # remove half of the overlap around each tile so that that image stitches correctly
                             # only need this for full resoution because downsampled ones already have the edges removed
-                            if self.half_overlap[0] != 0 and self._full_resolution:
-                                tile = tile[
-                                       self.half_overlap[0]: -self.half_overlap[0],
-                                       self.half_overlap[1]: -self.half_overlap[1],
-                                       ]
+                            if np.any(self.overlap[0] > 0) and self._full_resolution:
+                                min_index = np.floor(self.overlap / 2).astype(np.int)
+                                max_index = np.ceil(self.overlap / 2).astype(np.int)
+                                tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
                             blocks[-1].append(tile)
 
                 if rgb:
@@ -776,7 +816,6 @@ class NDTiffPyramidDataset():
                 )
 
                 self.axes = res_level.axes
-                self._channel_names = res_level.channels
                 self.bytes_per_pixel = res_level.bytes_per_pixel
                 self.dtype = res_level.dtype
                 self.image_width = res_level.image_width
@@ -883,7 +922,7 @@ class NDTiffPyramidDataset():
 
     def has_image(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
@@ -936,7 +975,7 @@ class NDTiffPyramidDataset():
 
     def read_image(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
@@ -993,7 +1032,7 @@ class NDTiffPyramidDataset():
 
     def read_metadata(
         self,
-        channel=0,
+        channel=None,
         z=None,
         time=None,
         position=None,
@@ -1035,7 +1074,7 @@ class NDTiffPyramidDataset():
         """
         with self._lock:
             return self.res_levels[resolution_level].read_metadata(
-                    channel=0,
+                    channel=channel,
                     z=z,
                     time=time,
                     position=position,
@@ -1057,38 +1096,3 @@ class NDTiffPyramidDataset():
         with self._lock:
             for res_level in self.res_levels:
                 res_level.close()
-
-
-_POSITION_AXIS = "position"
-_ROW_AXIS = "row"
-_COLUMN_AXIS = "column"
-_Z_AXIS = "z"
-_TIME_AXIS = "time"
-_CHANNEL_AXIS = "channel"
-
-def _consolidate_axes(channels: dict, channel: int, channel_name: str, z, position, time, row, col, kwargs):
-    """
-    Get all axis names in a consistent format
-    """
-    axes = {}
-    if channel is not None:
-        axes[_CHANNEL_AXIS] = channel
-    if channel_name is not None:
-        if channel_name in channels.keys():
-            axes[_CHANNEL_AXIS] = channels[channel_name]
-        else:
-            raise Exception(f'{channel_name} is not a valid channel name.'
-                            f'Valid channel names are: {list(channels.keys())}')
-    if z is not None:
-        axes[_Z_AXIS] = z
-    if position is not None:
-        axes[_POSITION_AXIS] = position
-    if time is not None:
-        axes[_TIME_AXIS] = time
-    if row is not None:
-        axes[_ROW_AXIS] = row
-    if col is not None:
-        axes[_COLUMN_AXIS] = col
-    for other_axis_name in kwargs.keys():
-        axes[other_axis_name] = kwargs[other_axis_name]
-    return axes

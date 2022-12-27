@@ -84,4 +84,14 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     */
     public boolean hasImage(HashMap<String, Object> axes, int resolutionIndex);
 
+
+   /**
+    * Get the essential metadata for the image (width, height, byte depth, rgb),
+    * without retrieving pixels and full metadata
+    * @param axes
+    * @return
+    */
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Object> axes,
+                                                           int resolutionIndex);
+
 }

@@ -30,7 +30,7 @@ class StorageMD {
          HashMap<String, Object> axesMap = new HashMap<String, Object>();
          while (iter.hasNext()) {
             String key = iter.next();
-            axesMap.put(key, axes.getInt(key));
+            axesMap.put(key, axes.get(key));
          }
          return axesMap;
       } catch (JSONException ex) {

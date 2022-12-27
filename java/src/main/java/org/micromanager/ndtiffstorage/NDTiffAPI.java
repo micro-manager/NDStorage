@@ -117,7 +117,7 @@ public interface NDTiffAPI {
    public boolean hasImage(HashMap<String, Object> axes);
 
    /**
-    * Get a set containing all image axes in this dataset
+    * Get a set containing the axis positions of each image in this dataset
     *
     * @return 
     */
