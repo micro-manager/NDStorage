@@ -31,7 +31,7 @@ public interface NDTiffAPI {
     * @param imageHeight
     * @param imageWidth
     */
-   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Integer> axes, boolean rgb, int imageHeight, int imageWidth);
+   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axes, boolean rgb, int imageHeight, int imageWidth);
 
    /**
     * Is this dataset finished writing and now read only?
@@ -98,7 +98,7 @@ public interface NDTiffAPI {
     * @param axes 
     * @return 
     */
-   public TaggedImage getImage(HashMap<String, Integer> axes);
+   public TaggedImage getImage(HashMap<String, Object> axes);
 
    /**
     * Get the essential metadata for the image (width, height, byte depth, rgb),
@@ -106,7 +106,7 @@ public interface NDTiffAPI {
     * @param axes
     * @return
     */
-   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Integer> axes);
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Object> axes);
 
    /**
     * Check if dataset has an image with the specified axes
@@ -114,14 +114,14 @@ public interface NDTiffAPI {
     * @param axes HashMap mapping axis names to positions
     * @return
     */
-   public boolean hasImage(HashMap<String, Integer> axes);
+   public boolean hasImage(HashMap<String, Object> axes);
 
    /**
-    * Get a set containing all image axes in this dataset
+    * Get a set containing the axis positions of each image in this dataset
     *
     * @return 
     */
-   public Set<HashMap<String, Integer>> getAxesSet();
+   public Set<HashMap<String, Object>> getAxesSet();
 
    /**
     * Return a unqiue name associated with this data storage instance. For instances

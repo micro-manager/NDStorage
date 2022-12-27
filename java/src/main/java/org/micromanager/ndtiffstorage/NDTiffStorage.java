@@ -72,16 +72,15 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private volatile int maxResolutionLevel_ = 0;
    private boolean loaded_, tiled_;
    //this is how to create a concurrent set
-   private Set<HashMap<String, Integer>> imageAxes_ = new ConcurrentHashMap<HashMap<String, Integer>, Boolean>().newKeySet();
+   private Set<HashMap<String, Object>> imageAxes_ = new ConcurrentHashMap<HashMap<String, Object>, Boolean>().newKeySet();
    private final Integer externalMaxResLevel_;
    private String prefix_;
    Consumer<String> debugLogger_ = null;
    private LinkedBlockingQueue<Runnable> writingTaskQueue_;
    private LinkedBlockingQueue<ImageWrittenListener> imageWrittenListeners_ = new LinkedBlockingQueue<ImageWrittenListener>();
+   private HashMap<String, Class> axisTypes_ = new HashMap<String, Class>();
 
    private boolean firstImageAdded_ = false;
-   //Assume that these are constant over the dataset for dipslay purposes, though they dont neccessarily need to be for storage
-   private boolean rgb_;
    private int byteDepth_;
 
    private int writingQueueMaxSize_ = 50;
@@ -316,8 +315,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       if (imageAxes_ == null || imageAxes_.size() == 0) {
          return 1;
       }
-      int maxRow = imageAxes_.stream().mapToInt(value -> value.get(ROW_AXIS)).max().getAsInt();
-      int minRow = imageAxes_.stream().mapToInt(value -> value.get(ROW_AXIS)).min().getAsInt();
+      int maxRow = imageAxes_.stream().mapToInt(value -> (Integer) value.get(ROW_AXIS)).max().getAsInt();
+      int minRow = imageAxes_.stream().mapToInt(value -> (Integer) value.get(ROW_AXIS)).min().getAsInt();
       return 1 + maxRow - minRow;
    }
 
@@ -325,8 +324,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       if (imageAxes_ == null || imageAxes_.size() == 0) {
          return 1;
       }
-      int maxCol = imageAxes_.stream().mapToInt(value -> value.get(COL_AXIS)).max().getAsInt();
-      int minCol = imageAxes_.stream().mapToInt(value -> value.get(COL_AXIS)).min().getAsInt();
+      int maxCol = imageAxes_.stream().mapToInt(value -> (Integer) value.get(COL_AXIS)).max().getAsInt();
+      int minCol = imageAxes_.stream().mapToInt(value -> (Integer) value.get(COL_AXIS)).min().getAsInt();
       return 1 + maxCol - minCol;
    }
 
@@ -347,7 +346,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * @param dsIndex
     * @return
     */
-   private boolean hasImage(int dsIndex, HashMap<String, Integer> axes) {
+   private boolean hasImage(int dsIndex, HashMap<String, Object> axes) {
       ResolutionLevel storage;
       if (dsIndex == 0) {
          storage = fullResStorage_;
@@ -394,7 +393,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * @return Tagged image or taggeded image with background pixels and null
     * tags if no pixel data is present
     */
-   public TaggedImage getDisplayImage(HashMap<String, Integer> axes,
+   public TaggedImage getDisplayImage(HashMap<String, Object> axes,
                                       int dsIndex, int x, int y, int width, int height) {
       //TODO: in theory could make byte depth independent for different images, but
       // how to know what it should be internally if only returning empty pixels
@@ -403,14 +402,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          return null; //Not yet initialized
       }
 
-      Object pixels;
-      if (rgb_) {
-         pixels = new byte[width * height * 4];
-      } else if (byteDepth_ == 1) {
-         pixels = new byte[width * height];
-      } else {
-         pixels = new short[width * height];
-      }
+      // Figure out what type of pixels
+      Object pixels = null;
       //go line by line through one column of tiles at a time, then move to next column
       JSONObject topLeftMD = null;
       //first calculate how many columns and rows of tiles are relevant and the number of pixels
@@ -447,7 +440,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       for (long col = colStart; col < colStart + lineWidths.size(); col++) {
          int yOffset = 0;
          for (long row = rowStart; row < rowStart + lineHeights.size(); row++) {
-            HashMap<String, Integer> axesCopy = IndexEntryData.deserializeAxes(IndexEntryData.serializeAxes(axes));
+            HashMap<String, Object> axesCopy = IndexEntryData.deserializeAxes(IndexEntryData.serializeAxes(axes));
             //Add in axes for row and col because this is how tiles are stored
             if (tiled_) {
                axesCopy.put(ROW_AXIS, (int) row);
@@ -482,7 +475,18 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                   tileYPix += tileHeight_;
                }
                try {
-                  int multiplier = rgb_ ? 4 : 1;
+                  EssentialImageMetadata eimd = getEssentialImageMetadata(axesCopy, dsIndex);
+                  if (pixels == null) {
+                     if (eimd.rgb) {
+                        pixels = new byte[width * height * 4];
+                     } else if (byteDepth_ == 1) {
+                        pixels = new byte[width * height];
+                     } else {
+                        pixels = new short[width * height];
+                     }
+                  }
+
+                  int multiplier = eimd.rgb ? 4 : 1;
                   if (dsIndex == 0) {
                      //account for overlaps when viewing full resolution tiles
                      tileYPix += yOverlap_ / 2;
@@ -526,14 +530,14 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    /**
     * create an additional lower resolution levels for zooming purposes
     */
-   private void addResolutionsUpTo(int index) throws InterruptedException, ExecutionException {
+   private void addResolutionsUpTo(int index, boolean rgb) throws InterruptedException, ExecutionException {
          if (index <= maxResolutionLevel_) {
             return;
          }
          int oldLevel = maxResolutionLevel_;
          maxResolutionLevel_ = index;
          for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
-            populateNewResolutionLevel(i);
+            populateNewResolutionLevel(i, rgb);
          }
    }
 
@@ -640,29 +644,29 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
    }
 
-   private void populateNewResolutionLevel(int resolutionIndex) {
+   private void populateNewResolutionLevel(int resolutionIndex, boolean rgb) {
       createDownsampledStorage(resolutionIndex);
       //add all tiles from existing resolution levels to this new one
       ResolutionLevel previousLevelStorage
               = resolutionIndex == 1 ? fullResStorage_ : lowResStorages_.get(resolutionIndex - 1);
       Set<String> imageKeys = previousLevelStorage.imageKeys();
       for (String key : imageKeys) {
-         HashMap<String, Integer> axes = IndexEntryData.deserializeAxes(key);
-         int fullResCol = axes.get(COL_AXIS);
-         int fullResRow = axes.get(ROW_AXIS);
+         HashMap<String, Object> axes = IndexEntryData.deserializeAxes(key);
+         int fullResCol = (Integer) axes.get(COL_AXIS);
+         int fullResRow = (Integer) axes.get(ROW_AXIS);
 
 //         int fullResPosIndex = posManager_.getFullResPositionIndex(, resolutionIndex - 1);
 //         int rowIndex = (int) posManager_.getGridRow(fullResPosIndex, resolutionIndex);
 //         int colIndex = (int) posManager_.getGridCol(fullResPosIndex, resolutionIndex);
          TaggedImage ti = previousLevelStorage.getImage(key);
-         addToLowResStorage(ti, axes,resolutionIndex - 1, fullResRow, fullResCol, rgb_);
+         addToLowResStorage(ti, axes,resolutionIndex - 1, fullResRow, fullResCol, rgb);
       }
    }
 
    /**
     * return a future for when the current res level is done writing
     */
-   private void addToLowResStorage(TaggedImage img, HashMap<String, Integer> axes,
+   private void addToLowResStorage(TaggedImage img, HashMap<String, Object> axes,
                                      int previousResIndex, int fullResRow, int fullResCol,
                                      boolean rgb) {
          //Read indices
@@ -673,11 +677,11 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             //Create this storage level if needed and add all existing tiles form the previous one
             if (!lowResStorages_.containsKey(resolutionIndex)) {
                //re add all tiles from previous res level
-               populateNewResolutionLevel(resolutionIndex);
+               populateNewResolutionLevel(resolutionIndex, rgb);
             }
 
             //copy and change and row and col to reflect lower resolution
-            HashMap<String, Integer> axesCopy = IndexEntryData.deserializeAxes(IndexEntryData.serializeAxes(axes));
+            HashMap<String, Object> axesCopy = IndexEntryData.deserializeAxes(IndexEntryData.serializeAxes(axes));
             axesCopy.put(COL_AXIS, (int) Math.floor(fullResCol / Math.pow(2, resolutionIndex)));
             axesCopy.put(ROW_AXIS, (int) Math.floor(fullResRow / Math.pow(2, resolutionIndex)));
 
@@ -761,14 +765,19 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * This version works for regular, non-multiresolution data
     *
     */
-   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Integer> axessss,
+   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axessss,
                         boolean rgb, int imageHeight, int imageWidth) {
       TaggedImage ti = new TaggedImage(pixels, metadata);
-//      try {
-//         Thread.sleep(20);
-//      } catch (Exception e) {
-//
-//      }
+
+      // Make sure each axis takes all integer or all string values
+      for (String axisName : axessss.keySet()) {
+         if (!axisTypes_.containsKey(axisName)) {
+            axisTypes_.put(axisName, axessss.get(axisName).getClass());
+         }
+         if (!axessss.get(axisName).getClass().equals(axisTypes_.get(axisName))) {
+            throw new RuntimeException("can't mix String and Integer values along an axis");
+         }
+      }
 
       if (!firstImageAdded_) {
          firstImageAdded_ = true;
@@ -778,7 +787,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       }
 
-      rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
       if (debugLogger_ != null) {
@@ -810,7 +818,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          }
          try {
             //Make a local copy
-            HashMap<String, Integer> axes = new HashMap<String, Integer>(axessss);
+            HashMap<String, Object> axes = new HashMap<String, Object>(axessss);
             imageAxes_.add(axes);
 
             if (debugLogger_ != null) {
@@ -847,7 +855,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    });
    }
 
-   static String getAxesString(HashMap<String, Integer> axes) {
+   static String getAxesString(HashMap<String, Object> axes) {
       String s = "";
       for (String key : axes.keySet()) {
          s += key + "  " + axes.get(key) + ",  ";
@@ -862,7 +870,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * @return
     */
    @Override
-   public Future putImageMultiRes( Object pixels, JSONObject metadata, final HashMap<String, Integer> axes,
+   public Future putImageMultiRes( Object pixels, JSONObject metadata, final HashMap<String, Object> axes,
                                   boolean rgb, int imageHeight, int imageWidth) {
       TaggedImage ti = new TaggedImage(pixels, metadata);
       if (!firstImageAdded_) {
@@ -875,7 +883,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
       }
 
-      rgb_ = rgb;
       byteDepth_ = (ti.pix instanceof byte[] ? 1 : 2);
 
       byte[] metadataBytes = metadata.toString().getBytes();
@@ -906,9 +913,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                   int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
                           (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
                                   / 4)) / Math.log(2));
-                  int row = axes.get(ROW_AXIS);
-                  int col = axes.get(COL_AXIS);
-                  addResolutionsUpTo(maxResIndex);
+                  int row = (Integer) axes.get(ROW_AXIS);
+                  int col = (Integer) axes.get(COL_AXIS);
+                  addResolutionsUpTo(maxResIndex, rgb);
                   addToLowResStorage(ti, axes, 0, row, col, rgb );
                }
 
@@ -919,7 +926,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       });
    }
 
-   public boolean hasImage(HashMap<String, Integer> axes, int downsampleIndex) {
+   public boolean hasImage(HashMap<String, Object> axes, int downsampleIndex) {
       if (downsampleIndex == 0) {
          return fullResStorage_.hasImage(IndexEntryData.serializeAxes(axes));
       } else {
@@ -929,23 +936,33 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    @Override
-   public TaggedImage getImage(HashMap<String, Integer> axes) {
+   public TaggedImage getImage(HashMap<String, Object> axes) {
       //full resolution
       return getImage(axes, 0);
    }
 
    @Override
-   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Integer> axes) {
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Object> axes,
+                                                           int downsampleIndex) {
+      if (downsampleIndex == 0) {
+         return fullResStorage_.getEssentialImageMetadata(IndexEntryData.serializeAxes(axes));
+      } else {
+         return lowResStorages_.get(downsampleIndex).getEssentialImageMetadata(IndexEntryData.serializeAxes(axes));
+      }
+   }
+
+   @Override
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Object> axes) {
       return fullResStorage_.getEssentialImageMetadata(IndexEntryData.serializeAxes(axes));
    }
 
    @Override
-   public boolean hasImage(HashMap<String, Integer> axes) {
+   public boolean hasImage(HashMap<String, Object> axes) {
       return hasImage(axes, 0);
    }
 
    @Override
-   public TaggedImage getImage(HashMap<String, Integer> axes, int dsIndex) {
+   public TaggedImage getImage(HashMap<String, Object> axes, int dsIndex) {
       //return a single tile from the full res image
       if (dsIndex == 0) {
          return fullResStorage_.getImage(IndexEntryData.serializeAxes(axes));
@@ -1155,9 +1172,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             return 0;
          }
       });
-      for (HashMap<String, Integer> s : imageAxes_) {
-         if (s.get("z") == sliceIndex) {
-            exploredTiles.add(new Point( s.get(COL_AXIS), s.get(ROW_AXIS)));
+      for (HashMap<String, Object> s : imageAxes_) {
+         if ((Integer) s.get("z") == sliceIndex) {
+            exploredTiles.add(new Point( (Integer) s.get(COL_AXIS), (Integer) s.get(ROW_AXIS)));
          }
 
       }
@@ -1168,18 +1185,18 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       if (imageAxes_ == null || imageAxes_.size() == 0) {
          return 0;
       }
-      return imageAxes_.stream().mapToInt(value -> value.get(ROW_AXIS)).min().getAsInt();
+      return imageAxes_.stream().mapToInt(value -> (Integer) value.get(ROW_AXIS)).min().getAsInt();
    }
 
    private long getMinCol() {
       if (imageAxes_ == null || imageAxes_.size() == 0) {
          return 0;
       }
-      return imageAxes_.stream().mapToInt(value -> value.get(COL_AXIS)).min().getAsInt();
+      return imageAxes_.stream().mapToInt(value -> (Integer) value.get(COL_AXIS)).min().getAsInt();
    }
 
    @Override
-   public Set<HashMap<String, Integer>> getAxesSet() {
+   public Set<HashMap<String, Object>> getAxesSet() {
       return imageAxes_;
    }
 

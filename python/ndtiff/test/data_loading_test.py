@@ -13,6 +13,8 @@ def test_v3_data():
     data_path = test_data_path + 'v3/ndtiffv3.0_test'
     dataset = Dataset(data_path)
     assert(np.mean(dataset.as_array()) > 0)
+    for channel_name, correct_channel_name in zip(dataset.get_channel_names(), ['DAPI', 'FITC']):
+        assert(channel_name == correct_channel_name)
 
 def test_v2_stitched_data():
     data_path = test_data_path + "v2/ndtiffv2.0_stitched_test"
@@ -51,4 +53,21 @@ def test_v3_mm_mda():
     data_path = test_data_path + 'v3/mm_mda_tcz_15'
     dataset = Dataset(data_path)
     stitched = np.array(dataset.as_array())
+
+def test_v3_2_multichannel():
+    data_path = test_data_path + 'v3/ndtiff3.2_multichannel'
+    dataset = Dataset(data_path)
+    assert(np.mean(dataset.read_image(channel='DAPI', time=0, z=1)) > 0)
+    for channel_name, correct_channel_name in zip(dataset.get_channel_names(), ['DAPI', 'FITC']):
+        assert(channel_name == correct_channel_name)
+
+def test_v3_2_monochrome():
+    data_path = test_data_path + 'v3/ndtiff3.2_monochrome'
+    dataset = Dataset(data_path)
+    assert (np.mean(dataset.read_image(time=0, z=1)) > 0)
+
+def test_v3_2_magellan_rgb_explore():
+    data_path = test_data_path + 'v3/ndtiff3.2_magellan_explore_rgb'
+    dataset = Dataset(data_path)
+    assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
 

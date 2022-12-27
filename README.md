@@ -40,7 +40,10 @@ NDTiff datasets are a folder that comprises three types of files:
 └── display_settings.txt
 ```
 
-The `NDTiff.index` file contains information about where all the different images live in each file and what their keys are (e.g. `{'time': 1, 'channel': 2}`). The `{name}_NDTiffStack.tif` contains image data and metadata. Datasets over 4GB will contain multiple TIFF files, since the TIFF specification maxes out at 4GB per file. Successive files will have numbers appended to the end (e.g., `_1`, `_2`, ...). Each image has one corresponding JSON object containing metadata, and there is one "summary metadata" JSON object that describes the whole dataset. The summary metadata object is replicated across each file. `display_settings.txt` is an optional JSON file containing contrast and display settings, with no particular assumed structure.
+The `NDTiff.index` file contains information about where all the different images live in each file and what their keys are (e.g. `{'time': 1, 'channel': 2}`). As of version NDTiff v3.2, these keys can take values as positive or negative integers or strings. For example, `{'time': -1, 'channel': 'GFP'}`.
+
+
+ The `{name}_NDTiffStack.tif` contains image data and metadata. Datasets over 4GB will contain multiple TIFF files, since the TIFF specification maxes out at 4GB per file. Successive files will have numbers appended to the end (e.g., `_1`, `_2`, ...). Each image has one corresponding JSON object containing metadata, and there is one "summary metadata" JSON object that describes the whole dataset. The summary metadata object is replicated across each file. `display_settings.txt` is an optional JSON file containing contrast and display settings, with no particular assumed structure.
 
 
 ## Multi-resolution pyramid
@@ -111,8 +114,17 @@ The index file is what enables the formats fast performance. Since a vanilla Tif
 
 This file is optional and contains settings for displaying the data contained within the file (colormaps, contrast settings, etc.). No particular form is assumed, other than it is all contained in JSON.
 
+## Revision history
 
-## Differences from version 2
+### 3.2
+
+Added the ability to use String values axis keys, e.g. `{'time': 0, 'channel': 'GFP', 'camera': 'Left'}` 
+
+### 3.1
+
+Fixes a bug where metadata was sometimes encoded using an incorrect encoding, see https://github.com/micro-manager/pycro-manager/issues/467#issuecomment-1354154902
+
+### 3.0
 
 1. In version 2 NDTiff files, even when not using multi-resolution pyramid features, the data were in a `Full resolution` directory. In v3.0 this was eliminated in favor of putting them directly in the top-level directory
 2. An additional 4 bytes was added to bytes 16-20 of the header of each file containing the minor version of the format, thereby shifting back the summary metadata and it's header by 4 bytes

@@ -39,7 +39,7 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param imageWidth
     * @return
     */
-   public Future putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Integer> axes,
+   public Future putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
                                   boolean rgb, int imageHeight, int imageWidth) ;
 
    /**
@@ -59,7 +59,7 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param imageHeight height of the returned image
     * @return
     */
-   public TaggedImage getDisplayImage(HashMap<String, Integer> axes,
+   public TaggedImage getDisplayImage(HashMap<String, Object> axes,
                                       int resIndex,
                                       int xOffset, int yOffset,
                                       int imageWidth, int imageHeight);
@@ -72,7 +72,7 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
     * @return
     */
-   public TaggedImage getImage(HashMap<String, Integer> axes, int resolutionIndex);
+   public TaggedImage getImage(HashMap<String, Object> axes, int resolutionIndex);
 
 
    /**
@@ -82,6 +82,16 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param resolutionIndex 0 is full resolution, 1 is downsampled x2, 2 is downsampled x4, etc
     * @return
     */
-    public boolean hasImage(HashMap<String, Integer> axes, int resolutionIndex);
+    public boolean hasImage(HashMap<String, Object> axes, int resolutionIndex);
+
+
+   /**
+    * Get the essential metadata for the image (width, height, byte depth, rgb),
+    * without retrieving pixels and full metadata
+    * @param axes
+    * @return
+    */
+   public EssentialImageMetadata getEssentialImageMetadata(HashMap<String, Object> axes,
+                                                           int resolutionIndex);
 
 }
