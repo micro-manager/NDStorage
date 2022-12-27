@@ -403,7 +403,7 @@ class NDTiffDataset():
             for axis_name in axes.keys():
                 if axis_name not in self.axes.keys():
                     self.axes[axis_name] = []
-                    self.axes_types = type(axes[axis_name])
+                    self.axes_types[axis_name] = type(axes[axis_name])
                 self.axes[axis_name].append(axes[axis_name])
                 self.axes[axis_name] = sorted(list(set(self.axes[axis_name])))
 
