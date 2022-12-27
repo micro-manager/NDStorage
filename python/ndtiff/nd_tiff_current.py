@@ -898,8 +898,8 @@ class NDTiffPyramidDataset():
                 else:
                     image = self.res_levels[res_level].as_array(axes=axes, stitched=stitched, **kwargs)
                     # crop away zero padding that extends pass where data is collected
-                    res_level_pixel_extent_min = (pixel_extent_min / 2 ** res_level).astype(np.int)
-                    res_level_pixel_extent_max = (pixel_extent_max / 2 ** res_level).astype(np.int)
+                    res_level_pixel_extent_min = (pixel_extent_min / 2 ** res_level).astype(np.int_)
+                    res_level_pixel_extent_max = (pixel_extent_max / 2 ** res_level).astype(np.int_)
                     if np.min(np.stack([res_level_pixel_extent_max - res_level_pixel_extent_min,
                                         res_level_pixel_extent_max - res_level_pixel_extent_min])) < 16:
                         # Not worth it to use ones this small
