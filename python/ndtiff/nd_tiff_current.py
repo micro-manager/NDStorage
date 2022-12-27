@@ -702,8 +702,8 @@ class NDTiffDataset():
                             # remove half of the overlap around each tile so that that image stitches correctly
                             # only need this for full resoution because downsampled ones already have the edges removed
                             if np.any(self.overlap[0] > 0) and self._full_resolution:
-                                min_index = np.floor(self.overlap / 2).astype(np.int)
-                                max_index = np.ceil(self.overlap / 2).astype(np.int)
+                                min_index = np.floor(self.overlap / 2).astype(np.int_)
+                                max_index = np.ceil(self.overlap / 2).astype(np.int_)
                                 tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
                             blocks[-1].append(tile)
 
