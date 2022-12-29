@@ -430,6 +430,7 @@ class NDTiffDataset():
         if ('channel_name' in kwargs):
             warnings.warn('channel_name is deprecated, use "channel" instead')
             channel = kwargs['channel_name']
+            del kwargs['channel_name']
 
         axis_positions = {'channel': channel, 'z': z, 'position': position,
                     'time': time, 'row': row, 'col': col, **kwargs}
