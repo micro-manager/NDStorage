@@ -274,8 +274,8 @@ public class NDTiffWriter {
    }
 
    public IndexEntryData writeImage(String indexKey, Object pixels, byte[] metadata,
-                                    boolean rgb, int imageHeight, int imageWidth) throws IOException {
-      IndexEntryData ied = writeIFD(indexKey, pixels, metadata,  rgb, imageHeight, imageWidth);
+                                    boolean rgb, int imageHeight, int imageWidth, int bitDepth) throws IOException {
+      IndexEntryData ied = writeIFD(indexKey, pixels, metadata, rgb, imageHeight, imageWidth, bitDepth);
       writeBuffers();
       indexMap_.put(indexKey, ied);
 
@@ -304,7 +304,8 @@ public class NDTiffWriter {
       fileChannelWrite(pixBuff, pixelOffset);
    }
 
-   private IndexEntryData writeIFD(String indexKey, Object pixels, byte[] metadata, boolean rgb, int imageHeight, int imageWidth
+   private IndexEntryData writeIFD(String indexKey, Object pixels, byte[] metadata,
+                                   boolean rgb, int imageHeight, int imageWidth, int bitDepth
                             ) throws IOException {
 
       if (fileChannel_.position() % 2 == 1) {
@@ -389,10 +390,18 @@ public class NDTiffWriter {
       int pixelType;
       if (rgb) {
          pixelType = IndexEntryData.EIGHT_BIT_RGB;
-      } else if (pixels instanceof byte[]) {
+      } else if (bitDepth == 8) {
          pixelType = IndexEntryData.EIGHT_BIT;
-      } else {
+      } else if (bitDepth == 10) {
+         pixelType = IndexEntryData.TEN_BIT;
+      } else if (bitDepth == 12) {
+         pixelType = IndexEntryData.TWELVE_BIT;
+      } else if (bitDepth == 14) {
+         pixelType = IndexEntryData.FOURTEEN_BIT;
+      } else if (bitDepth == 16) {
          pixelType = IndexEntryData.SIXTEEN_BIT;
+      } else {
+         throw new RuntimeException("Unknown pixel type");
       }
 
       return new IndexEntryData(indexKey, pixelType, pixelDataOffset, imageWidth, imageHeight,

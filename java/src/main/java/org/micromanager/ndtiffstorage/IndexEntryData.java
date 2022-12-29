@@ -23,6 +23,9 @@ public class IndexEntryData {
    public static final int EIGHT_BIT = 0;
    public static final int SIXTEEN_BIT = 1;
    public static final int EIGHT_BIT_RGB = 2;
+   public static final int TEN_BIT = 3;
+   public static final int TWELVE_BIT = 4;
+   public static final int FOURTEEN_BIT = 5;
 
    public static final int UNCOMPRESSED = 0;
 
@@ -89,7 +92,7 @@ public class IndexEntryData {
    }
 
    public EssentialImageMetadata toEssentialImageMetadata() {
-      return new EssentialImageMetadata((int) pixWidth_, (int) pixHeight_, getByteDepth(), isRGB());
+      return new EssentialImageMetadata((int) pixWidth_, (int) pixHeight_, getBitDepth(), isRGB());
    }
 
    public static TreeMap<String, IndexEntryData> readIndexMap(File f) throws IOException {
@@ -133,7 +136,29 @@ public class IndexEntryData {
    }
 
    public int getByteDepth() {
-      return pixelType_ == SIXTEEN_BIT ? 2 : 1;
+      if (pixelType_ == SIXTEEN_BIT || pixelType_ == FOURTEEN_BIT || pixelType_ == TWELVE_BIT ||
+          pixelType_ == TEN_BIT) {
+         return 2;
+      }
+      return 1;
+   }
+
+   public int getBitDepth() {
+      if (pixelType_ == EIGHT_BIT) {
+         return 8;
+      } else if (pixelType_ == TEN_BIT) {
+         return 10;
+      } else if (pixelType_ == TWELVE_BIT) {
+         return 12;
+      } else if (pixelType_ == FOURTEEN_BIT) {
+         return 14;
+      } else if (pixelType_ == SIXTEEN_BIT) {
+         return 16;
+      } else if (pixelType_ == EIGHT_BIT_RGB) {
+         return 8;
+      } else {
+         throw  new RuntimeException("Unknown pixel type");
+      }
    }
 
    /**

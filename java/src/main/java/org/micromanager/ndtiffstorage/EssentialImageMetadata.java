@@ -5,13 +5,13 @@ package org.micromanager.ndtiffstorage;
  */
 public class EssentialImageMetadata {
 
-    public final int width, height, byteDepth;
+    public final int width, height, bitDepth;
     public final boolean rgb;
 
-    public EssentialImageMetadata(int w, int h, int byted, boolean isRGB) {
+    public EssentialImageMetadata(int w, int h, int bd, boolean isRGB) {
         width = w;
         height = h;
-        byteDepth = byted;
+        bitDepth = bd;
         rgb = isRGB;
     }
 }
