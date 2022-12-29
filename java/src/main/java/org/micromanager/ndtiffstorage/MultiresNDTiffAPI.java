@@ -35,12 +35,13 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param metadata
     * @param axes
     * @param rgb
+    * @param bitDepth
     * @param imageHeight
     * @param imageWidth
     * @return
     */
    public Future putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
-                                  boolean rgb, int imageHeight, int imageWidth) ;
+                                  boolean rgb, int bitDepth, int imageHeight, int imageWidth) ;
 
    /**
     * return number of resolutions of the multiresolution pyramid

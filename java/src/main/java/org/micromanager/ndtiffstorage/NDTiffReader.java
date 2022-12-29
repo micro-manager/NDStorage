@@ -269,12 +269,30 @@ public class NDTiffReader {
    }
    
    private TaggedImage readTaggedImage(IndexEntryData data) throws IOException {
-      int numBytesOnDisk = (int) (data.pixWidth_ * data.pixHeight_ *
-                    (data.pixelType_ == IndexEntryData.SIXTEEN_BIT ? 2 :
-                            (data.pixelType_ == IndexEntryData.EIGHT_BIT ? 1 : 3)));
-      int numBytesReturned = (int) (data.pixWidth_ * data.pixHeight_ *
-              (data.pixelType_ == IndexEntryData.SIXTEEN_BIT ? 2 :
-                      (data.pixelType_ == IndexEntryData.EIGHT_BIT ? 1 : 4)));
+      int bytesPerPixelOnDisk, bytesPerPixelReturned;
+      if (data.pixelType_ == IndexEntryData.EIGHT_BIT) {
+         bytesPerPixelOnDisk = 1;
+         bytesPerPixelReturned = 1;
+      } else if (data.pixelType_ == IndexEntryData.TEN_BIT) {
+         bytesPerPixelOnDisk = 2;
+         bytesPerPixelReturned = 2;
+      } else if (data.pixelType_ == IndexEntryData.TWELVE_BIT) {
+         bytesPerPixelOnDisk = 2;
+         bytesPerPixelReturned = 2;
+      } else if (data.pixelType_ == IndexEntryData.FOURTEEN_BIT) {
+         bytesPerPixelOnDisk = 2;
+         bytesPerPixelReturned = 2;
+      } else if (data.pixelType_ == IndexEntryData.SIXTEEN_BIT) {
+         bytesPerPixelOnDisk = 2;
+         bytesPerPixelReturned = 2;
+      } else if (data.pixelType_ == IndexEntryData.EIGHT_BIT_RGB) {
+         bytesPerPixelOnDisk = 3;
+         bytesPerPixelReturned = 4;
+      } else {
+         throw new RuntimeException("Unknown pixel type");
+      }
+      int numBytesOnDisk = (int) (data.pixWidth_ * data.pixHeight_ * bytesPerPixelOnDisk);
+      int numBytesReturned = (int) (data.pixWidth_ * data.pixHeight_ * bytesPerPixelReturned);
       ByteBuffer pixelBuffer = ByteBuffer.allocate(numBytesOnDisk).order(byteOrder_);
       ByteBuffer mdBuffer = ByteBuffer.allocate((int) data.mdLength_).order(byteOrder_);
       fileChannel_.read(pixelBuffer, data.pixOffset_);

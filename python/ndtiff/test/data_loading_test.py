@@ -71,3 +71,7 @@ def test_v3_2_magellan_rgb_explore():
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
 
+def test_v3_2_12bit_pycromanager_data():
+    data_path = test_data_path + 'v3/12_bit_pycromanager_mda'
+    dataset = Dataset(data_path)
+    assert(dataset.read_image(time=0, channel='DAPI').dtype == np.uint16)

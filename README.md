@@ -100,7 +100,13 @@ The index file is what enables the formats fast performance. Since a vanilla Tif
 
 *4 bytes:* (32-bit integer) Height of the image
 
-*4 bytes:* (32-bit integer) Pixel type. 0 = 8bit; 1= 16bit; 2=8bitRGB
+*4 bytes:* (32-bit integer) Pixel type. 
+    0:  8bit monochrome 
+    1:  16bit monochrome
+    2:  8bit RGB
+    3:  10bit monochrome
+    4:  12bit monochrome
+    5:  14bit monochrome
 
 *4 bytes:* (32-bit integer) Pixel compression. Currently only 0 (Uncompressed) defined
 
@@ -115,6 +121,10 @@ The index file is what enables the formats fast performance. Since a vanilla Tif
 This file is optional and contains settings for displaying the data contained within the file (colormaps, contrast settings, etc.). No particular form is assumed, other than it is all contained in JSON.
 
 ## Revision history
+
+### 3.3
+
+Added new pixel types (10, 12, and 14 bit monochrome)
 
 ### 3.2
 

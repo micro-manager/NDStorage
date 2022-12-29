@@ -28,10 +28,12 @@ public interface NDTiffAPI {
     * @param metadata
     * @param axes
     * @param rgb is it RGB
+    * @param bitDepth
     * @param imageHeight
     * @param imageWidth
     */
-   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axes, boolean rgb, int imageHeight, int imageWidth);
+   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
+                          boolean rgb, int bitDepth, int imageHeight, int imageWidth);
 
    /**
     * Is this dataset finished writing and now read only?

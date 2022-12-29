@@ -28,9 +28,13 @@ class _SingleNDTiffReader:
 
     # file format constants
     SUMMARY_MD_HEADER = 2355492
-    EIGHT_BIT = 0
-    SIXTEEN_BIT = 1
+    EIGHT_BIT_MONOCHROME = 0
+    SIXTEEN_BIT_MONOCHROME = 1
     EIGHT_BIT_RGB = 2
+    TEN_BIT_MONOCHROME = 3
+    TWELVE_BIT_MONOCHROME = 4
+    FOURTEEN_BIT_MONOCHROME = 5
+
     UNCOMPRESSED = 0
 
     def __init__(self, tiff_path):
@@ -102,10 +106,13 @@ class _SingleNDTiffReader:
         if index["pixel_type"] == self.EIGHT_BIT_RGB:
             bytes_per_pixel = 3
             dtype = np.uint8
-        elif index["pixel_type"] == self.EIGHT_BIT:
+        elif index["pixel_type"] == self.EIGHT_BIT_MONOCHROME:
             bytes_per_pixel = 1
             dtype = np.uint8
-        elif index["pixel_type"] == self.SIXTEEN_BIT:
+        elif index["pixel_type"] == self.SIXTEEN_BIT_MONOCHROME or \
+                index["pixel_type"] == self.TEN_BIT_MONOCHROME or \
+                index["pixel_type"] == self.TWELVE_BIT_MONOCHROME or \
+                index["pixel_type"] == self.FOURTEEN_BIT_MONOCHROME:
             bytes_per_pixel = 2
             dtype = np.uint16
         else:
@@ -483,10 +490,13 @@ class NDTiffDataset():
         if first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT_RGB:
             self.bytes_per_pixel = 3
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT:
+        elif first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT_MONOCHROME:
             self.bytes_per_pixel = 1
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT:
+        elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == _SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == _SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
+                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME:
             self.bytes_per_pixel = 2
             self.dtype = np.uint16
 
