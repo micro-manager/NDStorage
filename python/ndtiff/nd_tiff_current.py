@@ -183,6 +183,8 @@ class NDTiffDataset():
             os.path.join(self.path, tiff) for tiff in os.listdir(self.path) if tiff.endswith(".tif")
         ]
         self._readers_by_filename = {}
+        self.summary_metadata = {}
+        self.major_version, self.minor_version = (0, 0)
         # Count how many files need to be opened
         num_tiffs = 0
         count = 0
@@ -197,7 +199,9 @@ class NDTiffDataset():
             self._readers_by_filename[tiff.split(os.sep)[-1]] = new_reader
             # Should be the same on every file so resetting them is fine
             self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
-        self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
+
+        if len(self._readers_by_filename) > 0:
+            self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
 
         self.overlap = (
@@ -221,13 +225,18 @@ class NDTiffDataset():
                 self.axes[axis] = sorted(list(set(self.axes[axis])))
 
         # figure out the mapping of channel name to position by reading image metadata
+        self._channels = {}
         self._parse_string_axes()
 
         # get information about image width and height, assuming that they are consistent for whole dataset
-        # (which is not neccessarily true but convenient when it is)
-        with self._lock:
-            first_index = list(self.index.values())[0]
-        self._parse_first_index(first_index)
+        # (which is not necessarily true but convenient when it is)
+        self.bytes_per_pixel = 1
+        self.dtype = np.uint8
+        self.image_width, self.image_height = (0, 0)
+        if len(self.index) > 0:
+            with self._lock:
+                first_index = list(self.index.values())[0]
+            self._parse_first_index(first_index)
 
         print("\rDataset opened                ")
 
@@ -461,8 +470,6 @@ class NDTiffDataset():
             if _CHANNEL_AXIS in self._string_axes_values:
                 self._channels = {name: self._string_axes_values[_CHANNEL_AXIS].index(name)
                                   for name in self._string_axes_values[_CHANNEL_AXIS]}
-            else:
-                self._channels = {}
         else:
             # before string-valued axes were allowed in NDTiff 3.1
             if 'ChNames' in self.summary_metadata:
@@ -470,7 +477,6 @@ class NDTiffDataset():
                 self._channels = {name: i for i, name in enumerate(self.summary_metadata['ChNames'])}
             else:
                 # AcqEngJ
-                self._channels = {}
                 if _CHANNEL_AXIS in self.axes.keys():
                     for key in self.index.keys():
                         axes = {axis: position for axis, position in key}
