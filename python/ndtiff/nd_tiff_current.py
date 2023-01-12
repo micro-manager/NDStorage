@@ -20,6 +20,20 @@ _Z_AXIS = "z"
 _TIME_AXIS = "time"
 _CHANNEL_AXIS = "channel"
 
+_AXIS_ORDER = {_ROW_AXIS: 7,
+               _COLUMN_AXIS: 6,
+               _POSITION_AXIS: 5, 
+               _TIME_AXIS: 4, 
+               _CHANNEL_AXIS:3, 
+               _Z_AXIS:2}
+
+def _get_axis_order_key(dict_item):
+    axis_name = dict_item[0]
+    if axis_name in _AXIS_ORDER.keys():
+        return _AXIS_ORDER[axis_name]
+    else:
+        return 3  # stack next to channel axes
+
 class _SingleNDTiffReader:
     """
     Class corresponsing to a single multipage tiff file
@@ -223,6 +237,8 @@ class NDTiffDataset():
                 self.axes[axis].append(position)
                 # get sorted unique elements
                 self.axes[axis] = sorted(list(set(self.axes[axis])))
+        # Sort axes according to _AXIS_ORDER
+        self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
 
         # figure out the mapping of channel name to position by reading image metadata
         self._channels = {}
@@ -654,8 +670,8 @@ class NDTiffDataset():
         Parameters
         ----------
         axes : list
-            list of axes names over which to iterate and merge into a stacked array. If None, all axes will be used.
-            The order of axes supplied in this list will be the order of the axes of the returned dask array
+            list of axes names over which to iterate and merge into a stacked array. The order of axes supplied in this 
+            list will be the order of the axes of the returned dask array. If None, all axes will be used in PTCZYX order.
         stitched : bool
             If true and tiles were acquired in a grid, lay out adjacent tiles next to one another (Default value = False)
         **kwargs :
