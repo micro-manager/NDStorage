@@ -2,7 +2,7 @@ import numpy as np
 from ndtiff import Dataset
 import os
 
-test_data_path = os.getcwd() + os.sep + 'test_data' + os.sep
+test_data_path = os.path.join(os.getcwd(), 'test_data')
 
 def test_v2_data():
     data_path = os.path.join(test_data_path, "v2", "ndtiffv2.0_test")
