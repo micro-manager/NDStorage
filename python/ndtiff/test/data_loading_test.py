@@ -61,6 +61,15 @@ def test_v3_2_multichannel():
     for channel_name, correct_channel_name in zip(dataset.get_channel_names(), ['DAPI', 'FITC']):
         assert(channel_name == correct_channel_name)
 
+def test_v3_2_multichannel_axis_sorting():
+    data_path = os.path.join(test_data_path, 'v3', 'ndtiff3.2_multichannel')
+    dataset = Dataset(data_path)
+    num_timepoints = len(dataset.axes['time'])
+    num_channels = len(dataset.axes['channel'])
+    num_slices = len(dataset.axes['z'])
+    data = dataset.as_array(axes=None)
+    assert data.shape[:-2] == (num_timepoints, num_channels, num_slices)
+
 def test_v3_2_monochrome():
     data_path = os.path.join(test_data_path, 'v3', 'ndtiff3.2_monochrome')
     dataset = Dataset(data_path)
