@@ -55,6 +55,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
+        pip install GitPython
         python update_ndtiff.py
     - name: commit and push
       run: |
