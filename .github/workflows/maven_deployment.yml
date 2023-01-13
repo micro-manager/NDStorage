@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'java/pom.xml'
+      - '.github/workflows/maven_deployment'
 
 jobs:
   release:
@@ -47,13 +48,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout-PM
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: henrypinkard/pycro-manager
 #         ref: main
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
-      run: cd pycro-manager && python update_ndtiff.py
+      run: cd $GITHUB_WORKSPACE/pycro-manager && python update_ndtiff.py
     - name: commit and push
       run: |
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
