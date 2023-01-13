@@ -72,6 +72,7 @@ jobs:
         cd pycro-manager
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
         git config --local user.name "Henry Pinkard"
+        git commit -am "update NDTiff version"
         git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git  
 
         
