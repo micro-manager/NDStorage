@@ -55,10 +55,8 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
-        pwd
-        ls
-        ls ..
-        cd pycro-manager && python update_ndtiff.py
+        cd pycromanager # why no hyphen? I have no idea
+        python update_ndtiff.py
     - name: commit and push
       run: |
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
