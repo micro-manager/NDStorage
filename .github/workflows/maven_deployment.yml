@@ -73,8 +73,7 @@ jobs:
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
         git config --local user.name "Henry Pinkard"
         git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git  
-      env:
-        ${{ secrets.PYCRO_TOKEN }}
+
         
 #     git config credential.https://github.com.username henrypinkard
 #        git commit -am "Update NDTiff dependency"
