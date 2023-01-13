@@ -65,13 +65,14 @@ jobs:
         cd pycro-manager
         pip install GitPython
         python update_ndtiff.py
-    - name: commit and push
+    - name: commit
       run: |
         cd pycro-manager
-
         git config user.name github-actions
         git config user.email github-actions@github.com
         git commit -am "update NDTiff version"
+    - name: push
+      run: |
         git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git  
 #        git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
 #        git config --local user.name "github-actions"
