@@ -55,8 +55,6 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
-        cd pycromanager # why no hyphen? I have no idea
-        ls
         python update_ndtiff.py
     - name: commit and push
       run: |
