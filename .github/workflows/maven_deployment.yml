@@ -56,7 +56,13 @@ jobs:
     - name: update-version
       run: |
         pip install GitPython
+        echo "current"
         pwd
+        echo "above"
+        ls
+        echo ".."
+        ls
+        echo "...."
         ls
         python update_ndtiff.py
     - name: commit and push
