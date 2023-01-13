@@ -57,7 +57,10 @@ jobs:
       run: |
         git clone https://github.com/henrypinkard/pycro-manager.git
         git clone https://github.com/micro-manager/NDTiffStorage.git
+        ls
         cd pycro-manger
+        echo ""
+        ls
         python update_ndtiff.py
 #         pip install GitPython
 #         echo "current"
