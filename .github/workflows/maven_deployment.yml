@@ -54,7 +54,11 @@ jobs:
         ref: main
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
-      run: cd pycro-manager && python update_ndtiff.py
+      run: |
+        pwd
+        ls
+        ls ..
+        cd pycro-manager && python update_ndtiff.py
     - name: commit and push
       run: |
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
