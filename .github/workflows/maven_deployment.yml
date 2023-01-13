@@ -53,10 +53,18 @@ jobs:
         repository: henrypinkard/pycro-manager
         ref: main
         token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout-ND
+      uses: actions/checkout@v2
+      with:
+        path: 'NDTiffStorage'
+        repository: micro-manager/NDTiffStorage
+        ref: main
+        token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
-        ls 
+  
         cd pycro-manager
+        pip install GitPython
         python update_ndtiff.py
 
     - name: commit and push
