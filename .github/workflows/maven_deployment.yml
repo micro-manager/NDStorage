@@ -49,11 +49,12 @@ jobs:
     - name: Checkout-PM
       uses: actions/checkout@v3
       with:
+        path: ''
         repository: henrypinkard/pycro-manager
         ref: main
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
-      run: cd /github/workspace/pycro-manager && python update_ndtiff.py
+      run: cd $GITHUB_WORKSPACE/pycro-manager && python update_ndtiff.py
     - name: commit and push
       run: |
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
