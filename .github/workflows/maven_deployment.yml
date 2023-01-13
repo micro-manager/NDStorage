@@ -46,34 +46,19 @@ jobs:
   update-pycromanger:
     runs-on: ubuntu-latest
     steps:
-#     - name: Checkout-PM
-#       uses: actions/checkout@v2
-#       with:
-#         path: ''
-#         repository: henrypinkard/pycro-manager
-#         ref: main
-#         token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout-PM
+      uses: actions/checkout@v2
+      with:
+        path: ''
+        repository: henrypinkard/pycro-manager
+        ref: pycro-manager
+        token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
-        git clone https://github.com/henrypinkard/pycro-manager.git
-        git clone https://github.com/micro-manager/NDTiffStorage.git
-        ls
-        cd pycro-manger
-        echo ""
-        ls
+        ls 
+        cd pycro-manager
         python update_ndtiff.py
-#         pip install GitPython
-#         echo "current"
-#         pwd
-#         echo "above"
-#         ls ..
-#         echo ".."
-#         ls ../..
-#         echo "...."
-#         ls ../..
-#         echo "home"
-#         ls ~
-       
+
     - name: commit and push
       run: |
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
