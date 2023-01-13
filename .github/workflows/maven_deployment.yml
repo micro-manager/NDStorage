@@ -74,6 +74,9 @@ jobs:
         git config --local user.name "GitHub Actions"
         git commit -am "Update NDTiff dependency"
         git push
+      env:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: create PR
       run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
       env:
