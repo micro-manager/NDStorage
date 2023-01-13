@@ -52,7 +52,7 @@ jobs:
         path: 'pycro-manager'
         repository: henrypinkard/pycro-manager
         ref: main
-#         token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.PYCRO_TOKEN }}
     - name: Checkout-ND
       uses: actions/checkout@v2
       with:
