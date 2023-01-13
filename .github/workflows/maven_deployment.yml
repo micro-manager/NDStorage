@@ -72,18 +72,32 @@ jobs:
         cd pycro-manager
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
         git config --local user.name "GitHub Actions"
-        git commit -am "Update NDTiff dependency"
-        git config credential.https://github.com.username henrypinkard
-        git config credential.https://github.com.password ${{ secrets.PYCRO_TOKEN }}
-        git push
+        
+    - name: Pushes to another repository
+      uses: cpina/github-action-push-to-another-repository@main
+      env:
+        API_TOKEN_GITHUB: ${{ secrets.PYCRO_TOKEN }}
+      with:
+  #       source-directory: 'output'
+        destination-github-username: 'henrypinkard'
+        destination-repository-name: 'pycro-manager'
+        user-email: 7969470+henrypinkard@users.noreply.github.com
+        target-branch: main    
+    
+#     git config credential.https://github.com.username henrypinkard
+    
+#        git commit -am "Update NDTiff dependency"
+ #       git config credential.https://github.com.username henrypinkard
+  #      git config credential.https://github.com.password ${{ secrets.PYCRO_TOKEN }}
+   #     git push
   #     git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git
 #     - name: Push changes
 #       uses: ad-m/github-push-action@master
 #       with:
 #         github_token: ${{ secrets.GITHUB_TOKEN }}
 # #         branch: ${{ github.ref }}
-    - name: create PR
-      run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
+#     - name: create PR
+#       run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
 #       env:
 #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
