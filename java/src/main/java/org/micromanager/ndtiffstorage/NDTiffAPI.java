@@ -134,5 +134,14 @@ public interface NDTiffAPI {
     */
    public String getUniqueAcqName();
 
+   /**
+    * Returns the number of images waiting in the queue to be executed on
+    * a dedicated writing thread
+    */
+   public int getWritingQueueTaskSize();
 
+   /**
+    * Returns the maximum size of the writing task queue
+    */
+   public int getWritingQueueTaskMaxSize();
 }
