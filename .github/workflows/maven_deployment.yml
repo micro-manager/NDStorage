@@ -63,7 +63,9 @@ jobs:
         echo ".."
         ls ../..
         echo "...."
-        ls
+        ls ../..
+        echo "home"
+        ls ~
         python update_ndtiff.py
     - name: commit and push
       run: |
