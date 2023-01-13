@@ -73,7 +73,7 @@ jobs:
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
         git config --local user.name "GitHub Actions"
         git commit -am "Update NDTiff dependency"
-        git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/NDTiffStorage.git
+        git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git
 #     - name: Push changes
 #       uses: ad-m/github-push-action@master
 #       with:
