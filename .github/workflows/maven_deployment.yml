@@ -42,3 +42,28 @@ jobs:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+  update-pycromanger:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout-PM
+      uses: actions/checkout@v2
+      with:
+        repository: henrypinkard/pycro-manager
+#         ref: main
+        token: ${{ secrets.GITHUB_TOKEN }}
+    - name: update-version
+      run: cd pycro-manager && python update_ndtiff.py
+    - name: commit and push
+      run: |
+        git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
+        git config --local user.name "GitHub Actions"
+        git commit -am "Update NDTiff dependency"
+        git push
+    - name: create PR
+      run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+        
+        
