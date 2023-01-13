@@ -59,9 +59,9 @@ jobs:
         echo "current"
         pwd
         echo "above"
-        ls
+        ls ..
         echo ".."
-        ls
+        ls ../..
         echo "...."
         ls
         python update_ndtiff.py
