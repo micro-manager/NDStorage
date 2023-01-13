@@ -53,6 +53,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    public static final ByteOrder BYTE_ORDER = ByteOrder.nativeOrder();
 
+   public static int WRITING_QUEUE_DEFAULT_MAX_SIZE = 50;
+
    public static final String ROW_AXIS = "row";
    public static final String COL_AXIS = "column";
 
@@ -81,9 +83,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private HashMap<String, Class> axisTypes_ = new HashMap<String, Class>();
 
    private boolean firstImageAdded_ = false;
-
-   private int writingQueueMaxSize_ = 50;
-
    private static final int BUFFER_DIRECT_THRESHOLD = 8192;
    private static final int BUFFER_RECYCLE_SIZE_MIN = 1024;
    private static final int BUFFER_POOL_SIZE =
@@ -282,6 +281,16 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 //   }
    public String getUniqueAcqName() {
       return uniqueAcqName_ + ""; //make new instance
+   }
+
+   @Override
+   public int getWritingQueueTaskSize() {
+      return writingTaskQueue_.size();
+   }
+
+   @Override
+   public int getWritingQueueTaskMaxSize() {
+      return writingTaskQueue_.remainingCapacity() + writingTaskQueue_.size();
    }
 
    public int getNumResLevels() {
@@ -786,22 +795,13 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                  "Adding image " + getAxesString(axessss) +
                  "\nwriting_queue_size= " + writingTaskQueue_.size());
       }
-      while (writingTaskQueue_.size() > writingQueueMaxSize_) {
-         try {
-            Thread.sleep(1);
-         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-         }
-      }
-      if (debugLogger_ != null) {
-         debugLogger_.accept("waiting for writing task queue complete");
-      }
-
+      // serialize metadata before adding to writing thread to speed performance
       byte[] metadataBytes = metadata.toString().getBytes(StandardCharsets.UTF_8);
       String indexKey = IndexEntryData.serializeAxes(axessss);
       fullResStorage_.addToWritePendingImages(indexKey, ti,
               new EssentialImageMetadata(imageWidth, imageHeight, bitDepth, rgb));
 
+   //Submit writing task on a dedicated thread
    return blockingWritingTaskHandoff(new Runnable() {
       @Override
       public void run() {
@@ -986,8 +986,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private Future blockingWritingTaskHandoff(Runnable r) {
       //Wait if queue is full, otherwise add and signal to running executor do it
       try {
-         writingTaskQueue_.put(r);
-         return writingExecutor_.submit(new Runnable() {
+         Future f = writingExecutor_.submit(new Runnable() {
             @Override
             public void run() {
                try {
@@ -997,7 +996,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                }
             }
          });
-
+         writingTaskQueue_.put(r);
+         return f;
       } catch (InterruptedException e) {
          throw new RuntimeException(e);
       }
