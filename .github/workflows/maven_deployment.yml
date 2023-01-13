@@ -49,9 +49,9 @@ jobs:
     - name: Checkout-PM
       uses: actions/checkout@v2
       with:
-        path: ''
+        path: 'pycro-manager'
         repository: henrypinkard/pycro-manager
-        ref: pycro-manager
+        ref: main
         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
