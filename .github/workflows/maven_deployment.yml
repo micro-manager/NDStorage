@@ -49,24 +49,43 @@ jobs:
     - name: Checkout-PM
       uses: actions/checkout@v2
       with:
-        path: ''
-        repository: henrypinkard/pycro-manager
+        path: 'pycro-manager'
+        repository: micro-manager/pycro-manager
+        ref: dependencies
+        token: ${{ secrets.PYCRO_TOKEN }}
+    - name: Checkout-ND
+      uses: actions/checkout@v2
+      with:
+        path: 'NDTiffStorage'
+        repository: micro-manager/NDTiffStorage
         ref: main
-        token: ${{ secrets.GITHUB_TOKEN }}
+#         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
-        cd pycromanager # why no hyphen? I have no idea
+        cd pycro-manager
+        # fast forward to latest
+        git merge -m "dependency update merge"
+        pip install GitPython
         python update_ndtiff.py
-    - name: commit and push
+    - name: commit
       run: |
+        cd pycro-manager
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git commit -am "update NDTiff version"
+    - name: push
+      run: |
+        cd pycro-manager
         git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
-        git config --local user.name "GitHub Actions"
-        git commit -am "Update NDTiff dependency"
-        git push
-    - name: create PR
-      run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
-      env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        git config --local user.name "Pycro-Bot"
+        git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git  
+
+      
+      
+#     - name: create PR
+#       run: gh pr create -R micro-manager/pycro-manager --title "test_title" --body "test"
+#       env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
         
         
