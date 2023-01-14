@@ -51,14 +51,14 @@ jobs:
       with:
         path: 'pycro-manager'
         repository: henrypinkard/pycro-manager
-        ref: main
+        ref: dependencies
         token: ${{ secrets.PYCRO_TOKEN }}
     - name: Checkout-ND
       uses: actions/checkout@v2
       with:
         path: 'NDTiffStorage'
         repository: henrypinkard/NDTiffStorage
-        ref: dependencies
+        ref: main
 #         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
