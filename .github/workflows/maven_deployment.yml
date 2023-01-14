@@ -58,11 +58,13 @@ jobs:
       with:
         path: 'NDTiffStorage'
         repository: henrypinkard/NDTiffStorage
-        ref: main
+        ref: dependencies
 #         token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
         cd pycro-manager
+        # fast forward to latest
+        git merge -m "dependency update merge"
         pip install GitPython
         python update_ndtiff.py
     - name: commit
@@ -74,10 +76,10 @@ jobs:
     - name: push
       run: |
         cd pycro-manager
+        git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
+        git config --local user.name "Pycro-Bot"
         git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/henrypinkard/pycro-manager.git  
-#        git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
-#        git config --local user.name "github-actions"
-      
+
       
       
 #     - name: create PR
