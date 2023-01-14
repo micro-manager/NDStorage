@@ -67,7 +67,6 @@ jobs:
         cd pycro-manager
         # fast forward to get code updates on main branch
         git merge -m "dependency update merge"
-        pip install GitPython
         python update_ndtiff.py
     - name: commit
       run: |
