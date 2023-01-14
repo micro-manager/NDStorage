@@ -67,7 +67,7 @@ jobs:
       run: |
         cd pycro-manager
         # fast forward to get code updates on main branch
-        git merge main -m "dependency update merge"
+        git merge origin/main -m "dependency update merge"
         python update_ndtiff.py
     - name: commit
       run: |
