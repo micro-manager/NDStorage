@@ -52,14 +52,14 @@ jobs:
         path: 'pycro-manager'
         repository: micro-manager/pycro-manager
         ref: dependencies
-#         token: ${{ secrets.PYCRO_TOKEN }}
+        token: ${{ secrets.PYCRO_TOKEN }}
     - name: Checkout-ND
       uses: actions/checkout@v2
       with:
         path: 'NDTiffStorage'
         repository: micro-manager/NDTiffStorage
         ref: main
-#         token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
     - name: update-version
       run: |
         cd pycro-manager
