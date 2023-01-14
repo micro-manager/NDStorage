@@ -72,7 +72,7 @@ jobs:
     - name: commit
       run: |
         cd pycro-manager
-        git config --local user.email "7969470+henrypinkard@users.noreply.github.com"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "NDTiff-Bot"
         git commit -am "update NDTiff version"
     - name: push
