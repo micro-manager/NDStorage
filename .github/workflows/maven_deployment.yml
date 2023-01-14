@@ -52,7 +52,7 @@ jobs:
         path: 'pycro-manager'
         repository: micro-manager/pycro-manager
         ref: dependencies
-        token: ${{ secrets.PYCRO_TOKEN }}
+#         token: ${{ secrets.PYCRO_TOKEN }}
     - name: Checkout-ND
       uses: actions/checkout@v2
       with:
