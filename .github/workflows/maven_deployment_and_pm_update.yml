@@ -70,7 +70,7 @@ jobs:
         git config --local user.name "NDTiff-Bot"
         # fast forward to get code updates on main branch
         git merge origin/main -m "dependency update merge"
-        python update_dependency.py NDTiffStorage
+        python build_automation/update_dependency.py NDTiffStorage
     - name: commit
       run: |
         cd pycro-manager
