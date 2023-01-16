@@ -53,7 +53,7 @@ jobs:
       with:
         path: 'pycro-manager'
         repository: micro-manager/pycro-manager
-        ref: dependencies
+        ref: dependency-update
         fetch-depth: 0 # check out all branches
         token: ${{ secrets.PYCRO_TOKEN }}
     - name: Checkout-ND
