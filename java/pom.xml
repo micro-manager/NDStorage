@@ -7,7 +7,7 @@
     <name>NDTiff Storage file format</name>
     <description>Java-based writer and reader used for NDTiffStorage format</description>
     <url>https://github.com/micro-manager/NDTiffStorage</url>
-   
+    
 	         
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
