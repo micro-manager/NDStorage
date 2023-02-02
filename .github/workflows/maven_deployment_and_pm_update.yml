@@ -67,7 +67,7 @@ jobs:
         repository: micro-manager/pycro-manager
         token: ${{ steps.get_workflow_token.outputs.token }}
         
-    - name: Checkout-AcqEngJ
+    - name: Checkout-NDTiff
       uses: actions/checkout@v3
       with:
         path: 'NDTiffStorage'
@@ -78,7 +78,7 @@ jobs:
       run: |
         cd pycro-manager
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git config --global user.name "AcqEngJ-Bot"
+        git config --global user.name "NDStorage-Bot"
         git config pull.rebase false
         python build_automation/update_dependency.py NDTiffStorage
         # Now bump version of PycroManagerJava.jar to reflect its updated dependency
