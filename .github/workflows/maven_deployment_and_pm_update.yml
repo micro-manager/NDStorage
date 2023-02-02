@@ -1,19 +1,21 @@
 # This workflow will build a Java project with Maven
 # For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
-# Then, it will push new versions to pycromanager
 
-name: Maven depolyment and pycromanager update
+name: Maven_depolyment and pycromanager update
 
 on:
   push:
     branches:
       - main
     paths:
-       - 'java/pom.xml'
+      - 'pom.xml'
+      
+# only let one instance run at a time
+concurrency: version_update
 
 jobs:
   maven-deploy:
-    name: Release on Sonatype OSS
+    name: Maven deploy to Sonatype OSS
     runs-on: ubuntu-latest
     if: ${{ github.repository == 'micro-manager/NDTiffStorage' }}
 
@@ -38,7 +40,7 @@ jobs:
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
           
       - name: Publish to Apache Maven Central
-        run: cd java && mvn deploy -Dgpg.passphrase=${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: mvn deploy -Dgpg.passphrase=${{ secrets.MAVEN_GPG_PASSPHRASE }}
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
@@ -48,36 +50,90 @@ jobs:
     needs: maven-deploy
     runs-on: ubuntu-latest
     steps:
+    
+    # Get token for using gh CLI
+    # https://michaelheap.com/ultimate-guide-github-actions-authentication/
+    - name: Get Token
+      id: get_workflow_token      
+      uses: getsentry/action-github-app-token@v2
+      with:
+        app_id: ${{ secrets.MM_PR_BOT_APP_ID }}
+        private_key: ${{ secrets.MM_PR_BOT_PRIVATE_KEY }}
+    
     - name: Checkout-PM
       uses: actions/checkout@v3
       with:
-        path: 'pycro-manager'
+        path: pycro-manager
         repository: micro-manager/pycro-manager
-        ref: dependency-update
-        fetch-depth: 0 # check out all branches
-        token: ${{ secrets.PYCRO_TOKEN }}
-    - name: Checkout-ND
+        token: ${{ steps.get_workflow_token.outputs.token }}
+        
+    - name: Checkout-NDTiff
       uses: actions/checkout@v3
       with:
         path: 'NDTiffStorage'
         repository: micro-manager/NDTiffStorage
-        ref: main
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ steps.get_workflow_token.outputs.token }}
+        
     - name: update-version
       run: |
         cd pycro-manager
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "NDTiff-Bot"
-        git config --local pull.rebase false
-        # fast forward to get code updates on main branch
-        git merge origin/main -m "dependency update merge"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "NDStorage-Bot"
+        git config pull.rebase false
         python build_automation/update_dependency.py NDTiffStorage
+        # Now bump version of PycroManagerJava.jar to reflect its updated dependency
+        pip install semantic_version
+        python build_automation/update_PycroManagerJava.py
+        
+        
     - name: commit
       run: |
         cd pycro-manager
-        git commit -am "update NDTiff version"
+        # delete any errant existing version of the update branch
+        git branch -D ndtiff-update 2>/dev/null || true
+        git push origin --delete ndtiff-update 2>/dev/null || true
+        
+        git checkout -b ndtiff-update
+        git commit -am "update NDTiffStorage version and PycroManagerJava version (Created by Github action)"
+        
     - name: push
       run: |
         cd pycro-manager
-        git pull # Get any changes that have occured since cloning the repo
-        git push https://henrypinkard:${{ secrets.PYCRO_TOKEN }}@github.com/micro-manager/pycro-manager.git  
+        git push --set-upstream origin ndtiff-update
+        
+        
+    - name: create pull request
+      # make a PR from *-update branch of PM to main branch
+      env:
+        GITHUB_TOKEN: ${{ steps.get_workflow_token.outputs.token }}
+        
+      run: |
+        cd pycro-manager
+        PR_URL=$(gh pr create -H ndtiff-update -B main --title 'Java dependency auto-update' --body 'Created by Github action')
+
+        echo "Created pull request $PR_URL"
+        
+        # supposedly you can use --delete-branch here, but as of 2-1-23 it doesn't work
+        gh pr merge $PR_URL --auto --merge
+        
+        
+          
+        # Block until PR merged or closed
+        while true; do
+        if gh pr view $PR_URL --json state | grep -q "MERGED"; then
+          echo "success merge"
+          break
+        elif gh pr view $PR_URL --json state | grep -q "CLOSED"; then
+          echo "pull request closed"
+          break
+        else
+          echo "waiting on pull request status"
+          sleep 10
+        fi
+        done
+        
+        # Now it is safe to assume its in the nightly builds
+        # delete the branch created for sending in the update
+        git push origin --delete ndtiff-update
+
+        
