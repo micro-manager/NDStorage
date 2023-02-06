@@ -724,7 +724,7 @@ class NDTiff_v2_0():
 
     def close(self):
         with self._lock:
-            for res_level in self.res_levels:
+            for res_level in self.res_levels.values():
                 res_level.close()
 
     def get_channel_names(self):
