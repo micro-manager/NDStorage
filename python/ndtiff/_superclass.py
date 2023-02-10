@@ -43,6 +43,7 @@ class Dataset:
         file = file_io.open(fullres_path + a_tiff_file, "rb")
         file.seek(12)
         major_version = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+        file.close()
         if major_version == 3:
             obj = NDTiffPyramidDataset.__new__(NDTiffPyramidDataset)
             obj.__init__(dataset_path=dataset_path, file_io=file_io)
