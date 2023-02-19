@@ -26,6 +26,7 @@ public class IndexEntryData {
    public static final int TEN_BIT = 3;
    public static final int TWELVE_BIT = 4;
    public static final int FOURTEEN_BIT = 5;
+   public static final int ELEVEN_BIT = 6;
 
    public static final int UNCOMPRESSED = 0;
 
@@ -137,7 +138,7 @@ public class IndexEntryData {
 
    public int getByteDepth() {
       if (pixelType_ == SIXTEEN_BIT || pixelType_ == FOURTEEN_BIT || pixelType_ == TWELVE_BIT ||
-          pixelType_ == TEN_BIT) {
+          pixelType_ == TEN_BIT || pixelType_ == ELEVEN_BIT) {
          return 2;
       }
       return 1;
@@ -156,6 +157,8 @@ public class IndexEntryData {
          return 16;
       } else if (pixelType_ == EIGHT_BIT_RGB) {
          return 8;
+      } else if (pixelType_ == ELEVEN_BIT) {
+         return 11;
       } else {
          throw  new RuntimeException("Unknown pixel type");
       }
