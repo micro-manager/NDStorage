@@ -48,6 +48,7 @@ class _SingleNDTiffReader:
     TEN_BIT_MONOCHROME = 3
     TWELVE_BIT_MONOCHROME = 4
     FOURTEEN_BIT_MONOCHROME = 5
+    ELEVEN_BIT_MONOCHROME = 6
 
     UNCOMPRESSED = 0
 
@@ -126,7 +127,8 @@ class _SingleNDTiffReader:
         elif index["pixel_type"] == self.SIXTEEN_BIT_MONOCHROME or \
                 index["pixel_type"] == self.TEN_BIT_MONOCHROME or \
                 index["pixel_type"] == self.TWELVE_BIT_MONOCHROME or \
-                index["pixel_type"] == self.FOURTEEN_BIT_MONOCHROME:
+                index["pixel_type"] == self.FOURTEEN_BIT_MONOCHROME or \
+                index["pixel_type"] == self.ELEVEN_BIT_MONOCHROME:
             bytes_per_pixel = 2
             dtype = np.uint16
         else:
@@ -509,7 +511,8 @@ class NDTiffDataset():
         elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
                 first_index["pixel_type"] == _SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
                 first_index["pixel_type"] == _SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME:
+                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == _SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
             self.bytes_per_pixel = 2
             self.dtype = np.uint16
 
