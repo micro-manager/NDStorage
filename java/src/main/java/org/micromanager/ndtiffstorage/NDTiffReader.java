@@ -288,6 +288,9 @@ public class NDTiffReader {
       } else if (data.pixelType_ == IndexEntryData.EIGHT_BIT_RGB) {
          bytesPerPixelOnDisk = 3;
          bytesPerPixelReturned = 4;
+      } else if (data.pixelType_ == IndexEntryData.ELEVEN_BIT) {
+         bytesPerPixelOnDisk = 2;
+         bytesPerPixelReturned = 2;
       } else {
          throw new RuntimeException("Unknown pixel type");
       }
