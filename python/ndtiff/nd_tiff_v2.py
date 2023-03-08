@@ -2,16 +2,14 @@
 Library for reading multiresolution micro-magellan
 """
 import os
-import mmap
 import numpy as np
 import sys
 import json
-import platform
 import dask.array as da
 import warnings
 import struct
 import threading
-
+from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 class _MultipageTiffReader:
     """
@@ -26,15 +24,17 @@ class _MultipageTiffReader:
     EIGHT_BIT_RGB = 2
     UNCOMPRESSED = 0
 
-    def __init__(self, tiff_path):
+    def __init__(self, tiff_path, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
+        """
+        tiff_path: str
+            The path to a .tiff file to load
+        file_io: ndtiff.file_io.NDTiffFileIO
+            A container containing various methods for interacting with files.
+        """
+        self.file_io = file_io
         self.tiff_path = tiff_path
-        self.file = open(tiff_path, "rb")
-        if platform.system() == "Windows":
-            self.mmap_file = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
-        else:
-            self.mmap_file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+        self.file = self.file_io.open(tiff_path, "rb")
         self.summary_md, self.first_ifd_offset = self._read_header()
-        self.mmap_file.close()
 
     def close(self):
         """ """
@@ -66,7 +66,6 @@ class _MultipageTiffReader:
         first_ifd_offset = np.frombuffer(self._read(4,8), dtype=np.uint32)[0]
 
         # read custom stuff: header, summary md
-        # int.from_bytes(self.mmap_file[24:28], sys.byteorder) # should be equal to 483729 starting in version 1
         self._major_version = int.from_bytes(self._read(12,16), sys.byteorder)
 
         summary_md_header, summary_md_length = np.frombuffer(self._read(16,24), dtype=np.uint32)
@@ -87,7 +86,6 @@ class _MultipageTiffReader:
         """
         self.file.seek(int(start), 0)
         return self.file.read(end - start)
-        # return self.np_memmap[int(start) : int(end)].tobytes()
 
     def read_metadata(self, index):
         return json.loads(
@@ -96,7 +94,7 @@ class _MultipageTiffReader:
             )
         )
 
-    def read_image(self, index, memmapped=False):
+    def read_image(self, index):
         if index["pixel_type"] == self.EIGHT_BIT_RGB:
             bytes_per_pixel = 3
             dtype = np.uint8
@@ -111,26 +109,17 @@ class _MultipageTiffReader:
         width = index["image_width"]
         height = index["image_height"]
 
-        if memmapped:
-            np_memmap = np.memmap(self.file, dtype=np.uint8, mode="r")
-            image = np.reshape(
-                np_memmap[
-                    index["pixel_offset"] : index["pixel_offset"] + width * height * bytes_per_pixel
-                ].view(dtype),
-                [height, width, 3] if bytes_per_pixel == 3 else [height, width],
-            )
-        else:
-            image = np.reshape(
-                np.frombuffer(self._read(
-                index["pixel_offset"], index["pixel_offset"] + width * height * bytes_per_pixel)
-                    , dtype=dtype),
-                [height, width, 3] if bytes_per_pixel == 3 else [height, width],
-            )
+        image = np.reshape(
+            np.frombuffer(self._read(
+            index["pixel_offset"], index["pixel_offset"] + width * height * bytes_per_pixel)
+                , dtype=dtype),
+            [height, width, 3] if bytes_per_pixel == 3 else [height, width],
+        )
         return image
 
 
 class _ResolutionLevel:
-    def __init__(self, path=None, count=None, max_count=None, remote=False, summary_metadata=False):
+    def __init__(self, path=None, count=None, max_count=None, remote=False, summary_metadata=False, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
         """
         Open all tiff files in directory, keep them in a list, and a tree based on image indices
 
@@ -141,6 +130,7 @@ class _ResolutionLevel:
         max_count : int
 
         """
+        self.file_io = file_io
         self.path_root = path + ("" if path[-1] == os.sep else os.sep)
         if remote:
             self.summary_metadata = summary_metadata
@@ -149,14 +139,14 @@ class _ResolutionLevel:
         else:
             self.index = self.read_index(path)
             tiff_names = [
-                os.path.join(path, tiff) for tiff in os.listdir(path) if tiff.endswith(".tif")
+                self.file_io.path_join(path, tiff) for tiff in self.file_io.listdir(path) if tiff.endswith(".tif")
             ]
             self._readers_by_filename = {}
             # populate list of readers and tree mapping indices to readers
             for tiff in tiff_names:
                 print("\rOpening file {} of {}...".format(count + 1, max_count), end="")
                 count += 1
-                self._readers_by_filename[tiff.split(os.sep)[-1]] = _MultipageTiffReader(tiff)
+                self._readers_by_filename[tiff.split(os.sep)[-1]] = _MultipageTiffReader(tiff, file_io=self.file_io)
             self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
     def has_image(self, axes):
@@ -172,7 +162,7 @@ class _ResolutionLevel:
 
         if index_entry["filename"] not in self._readers_by_filename:
             self._readers_by_filename[index_entry["filename"]] = _MultipageTiffReader(
-                self.path_root + index_entry["filename"]
+                self.path_root + index_entry["filename"], file_io=self.file_io
             )
         return axes, index_entry
 
@@ -208,7 +198,7 @@ class _ResolutionLevel:
 
     def read_index(self, path):
         print("\rReading index...          ", end="")
-        with open(path + os.sep + "NDTiff.index", "rb") as index_file:
+        with self.file_io.open(path + os.sep + "NDTiff.index", "rb") as index_file:
             data = index_file.read()
         entries = {}
         position = 0
@@ -232,15 +222,12 @@ class _ResolutionLevel:
     def read_image(
         self,
         axes,
-        memmapped=False,
     ):
         """
 
         Parameters
         ----------
         axes : dict
-        memmapped : bool
-             (Default value = False)
 
         Returns
         -------
@@ -252,7 +239,7 @@ class _ResolutionLevel:
             raise Exception("image with keys {} not present in data set".format(key))
         index = self.index[key]
         reader = self._readers_by_filename[index["filename"]]
-        return reader.read_image(index, memmapped)
+        return reader.read_image(index)
 
     def read_metadata(self, axes):
         """
@@ -290,7 +277,7 @@ class NDTiff_v2_0():
     _TIME_AXIS = "time"
     _CHANNEL_AXIS = "channel"
 
-    def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None):
+    def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
         """
         Creat a Object providing access to and NDTiffStorage dataset, either one currently being acquired or one on disk
 
@@ -302,7 +289,10 @@ class NDTiff_v2_0():
             One open the full resolution data, if it is multi-res
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage
+        file_io: ndtiff.file_io.NDTiffFileIO
+            A container containing various methods for interacting with files.
         """
+        self.file_io = file_io
         self._tile_width = None
         self._tile_height = None
         self._lock = threading.Lock()
@@ -325,7 +315,8 @@ class NDTiff_v2_0():
             with self._lock:
                 self.res_levels = {
                     0: _ResolutionLevel(
-                        remote=True, summary_metadata=self.summary_metadata, path=full_res_path
+                        remote=True, summary_metadata=self.summary_metadata, path=full_res_path,
+                        file_io=self.file_io
                     )
                 }
             self.axes = {}
@@ -335,7 +326,7 @@ class NDTiff_v2_0():
 
         self.path = dataset_path
         res_dirs = [
-            dI for dI in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, dI))
+            dI for dI in self.file_io.listdir(dataset_path) if self.file_io.isdir(self.file_io.path_join(dataset_path, dI))
         ]
         # map from downsample factor to datset
         with self._lock:
@@ -347,14 +338,14 @@ class NDTiff_v2_0():
         num_tiffs = 0
         count = 0
         for res_dir in res_dirs:
-            for file in os.listdir(os.path.join(dataset_path, res_dir)):
+            for file in self.file_io.listdir(self.file_io.path_join(dataset_path, res_dir)):
                 if file.endswith(".tif"):
                     num_tiffs += 1
         for res_dir in res_dirs:
             if full_res_only and res_dir != "Full resolution":
                 continue
-            res_dir_path = os.path.join(dataset_path, res_dir)
-            res_level = _ResolutionLevel(res_dir_path, count, num_tiffs)
+            res_dir_path = self.file_io.path_join(dataset_path, res_dir)
+            res_level = _ResolutionLevel(res_dir_path, count, num_tiffs, file_io=self.file_io)
             if res_dir == "Full resolution":
                 with self._lock:
                     self.res_levels[0] = res_level
@@ -531,7 +522,7 @@ class NDTiff_v2_0():
                         if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
                             blocks[-1].append(self._empty_tile)
                         else:
-                            tile = self.read_image(**axes, **axes_to_slice, row=row, column=column, memmapped=True)
+                            tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
                             if self.half_overlap[0] != 0:
                                 tile = tile[
                                     self.half_overlap[0] : -self.half_overlap[0],
@@ -628,7 +619,6 @@ class NDTiff_v2_0():
         col=None,
         channel_name=None,
         resolution_level=0,
-        memmapped=False,
         **kwargs
     ):
         """
@@ -653,8 +643,6 @@ class NDTiff_v2_0():
         resolution_level :
             0 is full resolution, otherwise represents downampling of pixels
             at 2 ** (resolution_level) (Default value = 0)
-        memmapped : bool
-             (Default value = False)
         **kwargs :
             names and integer positions of any other axes
 
@@ -670,7 +658,7 @@ class NDTiff_v2_0():
             )
 
             res_level = self.res_levels[resolution_level]
-            return res_level.read_image(axes, memmapped)
+            return res_level.read_image(axes)
 
     def read_metadata(
         self,
@@ -724,7 +712,7 @@ class NDTiff_v2_0():
 
     def close(self):
         with self._lock:
-            for res_level in self.res_levels:
+            for res_level in self.res_levels.values():
                 res_level.close()
 
     def get_channel_names(self):

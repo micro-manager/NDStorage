@@ -400,6 +400,8 @@ public class NDTiffWriter {
          pixelType = IndexEntryData.FOURTEEN_BIT;
       } else if (bitDepth == 16) {
          pixelType = IndexEntryData.SIXTEEN_BIT;
+      } else if (bitDepth == 11) {
+         pixelType = IndexEntryData.ELEVEN_BIT;
       } else {
          throw new RuntimeException("Unknown pixel type");
       }

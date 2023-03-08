@@ -2,16 +2,14 @@
 Library for reading NDTiff datasets
 """
 import os
-import mmap
 import numpy as np
 import sys
 import json
-import platform
 import dask.array as da
 import warnings
 import struct
 import threading
-import inspect
+from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 _POSITION_AXIS = "position"
 _ROW_AXIS = "row"
@@ -38,6 +36,8 @@ class _SingleNDTiffReader:
     """
     Class corresponsing to a single multipage tiff file
     Pass the full path of the TIFF to instantiate and call close() when finished
+
+
     """
 
     # file format constants
@@ -48,18 +48,21 @@ class _SingleNDTiffReader:
     TEN_BIT_MONOCHROME = 3
     TWELVE_BIT_MONOCHROME = 4
     FOURTEEN_BIT_MONOCHROME = 5
+    ELEVEN_BIT_MONOCHROME = 6
 
     UNCOMPRESSED = 0
 
-    def __init__(self, tiff_path):
+    def __init__(self, tiff_path, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
+        """
+        tiff_path: str
+            The path to a .tiff file to load
+        file_io: ndtiff.file_io.NDTiffFileIO
+            A container containing various methods for interacting with files.
+        """
+        self.file_io = file_io
         self.tiff_path = tiff_path
-        self.file = open(tiff_path, "rb")
-        if platform.system() == "Windows":
-            self.mmap_file = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
-        else:
-            self.mmap_file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+        self.file = self.file_io.open(tiff_path, "rb")
         self.summary_md, self.first_ifd_offset = self._read_header()
-        self.mmap_file.close()
 
     def close(self):
         """ """
@@ -91,7 +94,6 @@ class _SingleNDTiffReader:
         first_ifd_offset = np.frombuffer(self._read(4,8), dtype=np.uint32)[0]
 
         # read custom stuff: header, summary md
-        # int.from_bytes(self.mmap_file[24:28], sys.byteorder) # should be equal to 483729 starting in version 1
         self.major_version = int.from_bytes(self._read(12, 16), sys.byteorder)
         self.minor_version = int.from_bytes(self._read(16, 20), sys.byteorder)
 
@@ -107,7 +109,6 @@ class _SingleNDTiffReader:
         """
         self.file.seek(int(start), 0)
         return self.file.read(end - start)
-        # return self.np_memmap[int(start) : int(end)].tobytes()
 
     def read_metadata(self, index):
         return json.loads(
@@ -116,7 +117,7 @@ class _SingleNDTiffReader:
             )
         )
 
-    def read_image(self, index, memmapped=False):
+    def read_image(self, index):
         if index["pixel_type"] == self.EIGHT_BIT_RGB:
             bytes_per_pixel = 3
             dtype = np.uint8
@@ -126,29 +127,20 @@ class _SingleNDTiffReader:
         elif index["pixel_type"] == self.SIXTEEN_BIT_MONOCHROME or \
                 index["pixel_type"] == self.TEN_BIT_MONOCHROME or \
                 index["pixel_type"] == self.TWELVE_BIT_MONOCHROME or \
-                index["pixel_type"] == self.FOURTEEN_BIT_MONOCHROME:
+                index["pixel_type"] == self.FOURTEEN_BIT_MONOCHROME or \
+                index["pixel_type"] == self.ELEVEN_BIT_MONOCHROME:
             bytes_per_pixel = 2
             dtype = np.uint16
         else:
             raise Exception("unrecognized pixel type")
         width = index["image_width"]
         height = index["image_height"]
-
-        if memmapped:
-            np_memmap = np.memmap(self.file, dtype=np.uint8, mode="r")
-            image = np.reshape(
-                np_memmap[
-                    index["pixel_offset"] : index["pixel_offset"] + width * height * bytes_per_pixel
-                ].view(dtype),
-                [height, width, 3] if bytes_per_pixel == 3 else [height, width],
-            )
-        else:
-            image = np.reshape(
-                np.frombuffer(self._read(
-                index["pixel_offset"], index["pixel_offset"] + width * height * bytes_per_pixel)
-                    , dtype=dtype),
-                [height, width, 3] if bytes_per_pixel == 3 else [height, width],
-            )
+        image = np.reshape(
+            np.frombuffer(self._read(
+            index["pixel_offset"], index["pixel_offset"] + width * height * bytes_per_pixel)
+                , dtype=dtype),
+            [height, width, 3] if bytes_per_pixel == 3 else [height, width],
+        )
         return image
 
 class NDTiffDataset():
@@ -156,7 +148,7 @@ class NDTiffDataset():
     Class that opens a single NDTiff dataset
     """
 
-    def __init__(self, dataset_path=None, remote_storage_monitor=None, **kwargs):
+    def __init__(self, dataset_path=None, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, **kwargs):
         """
         Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
@@ -167,7 +159,10 @@ class NDTiffDataset():
             Abosolute path of top level folder of a dataset on disk
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage. User's need not call this directly
+        file_io: ndtiff.file_io.NDTiffFileIO
+            A container containing various methods for interacting with files.
         """
+        self.file_io = file_io
         # if it is in fact a pyramid, the parent class will handle this. I think this implies that
         # resolution levels cannot be opened seperately and expected to stitch correctly when there
         # is tile overlap
@@ -194,7 +189,7 @@ class NDTiffDataset():
         self.path += "" if self.path[-1] == os.sep else os.sep
         self.index = self.read_index(self.path)
         tiff_names = [
-            os.path.join(self.path, tiff) for tiff in os.listdir(self.path) if tiff.endswith(".tif")
+            self.file_io.path_join(self.path, tiff) for tiff in self.file_io.listdir(self.path) if tiff.endswith(".tif")
         ]
         self._readers_by_filename = {}
         self.summary_metadata = {}
@@ -202,14 +197,14 @@ class NDTiffDataset():
         # Count how many files need to be opened
         num_tiffs = 0
         count = 0
-        for file in os.listdir(self.path):
+        for file in self.file_io.listdir(self.path):
             if file.endswith(".tif"):
                 num_tiffs += 1
         # populate list of readers and tree mapping indices to readers
         for tiff in tiff_names:
             print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
             count += 1
-            new_reader = _SingleNDTiffReader(tiff)
+            new_reader = _SingleNDTiffReader(tiff, file_io=self.file_io)
             self._readers_by_filename[tiff.split(os.sep)[-1]] = new_reader
             # Should be the same on every file so resetting them is fine
             self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
@@ -326,7 +321,6 @@ class NDTiffDataset():
         position=None,
         row=None,
         col=None,
-        memmapped=False,
         **kwargs
     ):
         """
@@ -346,8 +340,6 @@ class NDTiffDataset():
             index of tile row for XY tiled datasets (Default value = None)
         col : int
             index of tile col for XY tiled datasets (Default value = None)
-        memmapped : bool
-             (Default value = False)
         **kwargs :
             names and integer positions of any other axes
 
@@ -360,7 +352,7 @@ class NDTiffDataset():
         with self._lock:
             axes = self._consolidate_axes(channel, z, position, time, row, col, **kwargs )
 
-            return self._do_read_image(axes, memmapped)
+            return self._do_read_image(axes)
 
     def read_metadata(
         self,
@@ -425,7 +417,7 @@ class NDTiffDataset():
             _, axes, index_entry = self._read_single_index_entry(data, self.index)
 
             if index_entry["filename"] not in self._readers_by_filename:
-                new_reader = _SingleNDTiffReader(self.path + index_entry["filename"] )
+                new_reader = _SingleNDTiffReader(self.path + index_entry["filename"], file_io=self.file_io)
                 self._readers_by_filename[index_entry["filename"]] = new_reader
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
@@ -519,7 +511,8 @@ class NDTiffDataset():
         elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
                 first_index["pixel_type"] == _SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
                 first_index["pixel_type"] == _SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME:
+                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == _SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
             self.bytes_per_pixel = 2
             self.dtype = np.uint16
 
@@ -601,7 +594,7 @@ class NDTiffDataset():
 
     def read_index(self, path):
         print("\rReading index...          ", end="")
-        with open(path + os.sep + "NDTiff.index", "rb") as index_file:
+        with self.file_io.open(path + os.sep + "NDTiff.index", "rb") as index_file:
             data = index_file.read()
         entries = {}
         position = 0
@@ -625,7 +618,6 @@ class NDTiffDataset():
     def _do_read_image(
         self,
         axes,
-        memmapped=False,
     ):
         # determine which reader contains the image
         key = frozenset(axes.items())
@@ -633,7 +625,7 @@ class NDTiffDataset():
             raise Exception("image with keys {} not present in data set".format(key))
         index = self.index[key]
         reader = self._readers_by_filename[index["filename"]]
-        return reader.read_image(index, memmapped)
+        return reader.read_image(index)
 
     def _do_read_metadata(self, axes):
         """
@@ -731,7 +723,7 @@ class NDTiffDataset():
                         if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
                             blocks[-1].append(self._empty_tile)
                         else:
-                            tile = self.read_image(**axes, **axes_to_slice, row=row, column=column, memmapped=True)
+                            tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
                             # remove half of the overlap around each tile so that that image stitches correctly
                             # only need this for full resoution because downsampled ones already have the edges removed
                             if np.any(self.overlap[0] > 0) and self._full_resolution:
@@ -779,7 +771,7 @@ class NDTiffDataset():
 class NDTiffPyramidDataset():
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""
 
-    def __init__(self, dataset_path=None, remote_storage_monitor=None):
+    def __init__(self, dataset_path=None, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
         """
         Provides access to a NDTiffStorage pyramid dataset,
         either one currently being acquired or one on disk
@@ -790,7 +782,10 @@ class NDTiffPyramidDataset():
             Abosolute path of top level folder of a dataset on disk
         remote_storage_monitor : JavaObjectShadow
             Object that allows callbacks from remote NDTiffStorage. Users need not call this directly
+        file_io: ndtiff.file_io.NDTiffFileIO
+            A container containing various methods for interacting with files.
         """
+        self.file_io = file_io
         self._lock = threading.RLock()
         if remote_storage_monitor is not None:
             self._remote_storage_monitor = None # It belongs to the full resolution subclass
@@ -820,7 +815,7 @@ class NDTiffPyramidDataset():
         self.path = dataset_path
         self.path += "" if self.path[-1] == os.sep else os.sep
         res_dirs = [
-            dI for dI in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, dI))
+            dI for dI in self.file_io.listdir(dataset_path) if self.file_io.isdir(self.file_io.path_join(dataset_path, dI))
         ]
         # map from downsample factor to dataset
         with self._lock:
@@ -832,8 +827,8 @@ class NDTiffPyramidDataset():
             )
 
         for res_dir in res_dirs:
-            res_dir_path = os.path.join(dataset_path, res_dir)
-            res_level = NDTiffDataset(dataset_path=res_dir_path)
+            res_dir_path = self.file_io.path_join(dataset_path, res_dir)
+            res_level = NDTiffDataset(dataset_path=res_dir_path, file_io=self.file_io)
             if res_dir == "Full resolution":
                 with self._lock:
                     self.res_levels[0] = res_level
@@ -1016,7 +1011,6 @@ class NDTiffPyramidDataset():
         col=None,
         channel_name=None,
         resolution_level=0,
-        memmapped=False,
         **kwargs
     ):
         """
@@ -1041,8 +1035,6 @@ class NDTiffPyramidDataset():
         resolution_level :
             0 is full resolution, otherwise represents downampling of pixels
             at 2 ** (resolution_level) (Default value = 0)
-        memmapped : bool
-             (Default value = False)
         **kwargs :
             names and integer positions of any other axes
 
@@ -1060,7 +1052,6 @@ class NDTiffPyramidDataset():
                     row=row,
                     col=col,
                     channel_name=channel_name,
-                    memmapped=memmapped,
                     **kwargs)
 
     def read_metadata(

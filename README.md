@@ -199,3 +199,20 @@ A listing of all the images contained in the file and their byte offsets. This a
 ### Image display settings
 
 Image display settings (channel contrast and colors). The first 4 bytes of this block contain the Display Settings Header (347834724 = 0x14BB8964), and the next 4 contain the number of subsequent bytes reserved for display settings. A UTF-8 JSON string containing display settings is written.
+
+
+## Support for Cloud-based IO
+The python `ndtiff` package supports IO to cloud services (i.e. AWS s3) via thr `file_io` submodule.
+you will need to provide your own file interface methods (or use those from other packages i.e. `boto3`), in the following way:
+```
+from _your_custom_storage_module_ import storage
+import ndtiff
+
+file_io = ndtiff.file_io.NDTiffFileIO(open_function=storage.open,
+                                      listdir_function=storage.listdir,
+                                      path_join_function=storage.pathjoin, 
+                                      isdir_function=storage.isdir)
+
+dset = ndtiff.Dataset("s3://bucket_name/path/to/your/dataset", file_io=file_io)
+```
+
