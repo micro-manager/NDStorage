@@ -156,6 +156,9 @@ public final class ResolutionLevel {
          return md;
       }
 
+      if (tiffReadersByLabel_ == null) {
+         return null;
+      }
       NDTiffReader reader = tiffReadersByLabel_.get(indexKey);
       if (reader == null) {
          return null;

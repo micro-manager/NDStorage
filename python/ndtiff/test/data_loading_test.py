@@ -79,13 +79,26 @@ def test_v3_2_magellan_rgb_explore(test_data_path):
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
 
-def test_v3_2_12bit_pycromanager_data(test_data_path):
-    data_path = os.path.join(test_data_path, 'v3', '12_bit_pycromanager_mda')
-    dataset = Dataset(data_path)
-    assert(dataset.read_image(time=0, channel='DAPI').dtype == np.uint16)
-
 def test_v3_2_11bit_data(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'ndtiff3.2_11bit_1')
     dataset = Dataset(data_path)
     assert(dataset.read_metadata(time=0)['BitDepth'] == 11)
     assert(dataset.read_image(time=0).dtype == np.uint16)
+
+def test_v3_2_12bit_pycromanager_data(test_data_path):
+    data_path = os.path.join(test_data_path, 'v3', '12_bit_pycromanager_mda')
+    dataset = Dataset(data_path)
+    assert(dataset.read_image(time=0, channel='DAPI').dtype == np.uint16)
+
+def test_v3_2_no_magellan_explore_channels(test_data_path):
+    data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_multi_channel')
+    dataset = Dataset(data_path)
+    assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
+
+def test_v3_2_no_magellan_explore_no_channels(test_data_path):
+    data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_no_channel')
+    dataset = Dataset(data_path)
+    assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
+
+
+

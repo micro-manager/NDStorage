@@ -1167,7 +1167,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * @return set of points (col, row) with indices of tiles that have been
     * added at this slice index
     */
-   public Set<Point> getTileIndicesWithDataAt(int sliceIndex) {
+   public Set<Point> getTileIndicesWithDataAt(String name, int sliceIndex) {
       Set<Point> exploredTiles = new TreeSet<Point>(new Comparator<Point>() {
          @Override
          public int compare(Point o1, Point o2) {
@@ -1180,12 +1180,17 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          }
       });
       for (HashMap<String, Object> s : imageAxes_) {
-         if ((Integer) s.get("z") == sliceIndex) {
+         if ((Integer) s.get(name) == sliceIndex) {
             exploredTiles.add(new Point( (Integer) s.get(COL_AXIS), (Integer) s.get(ROW_AXIS)));
          }
 
       }
       return exploredTiles;
+   }
+
+   @Override
+   public Set<Point> getTileIndicesWithDataAt(int zIndex) {
+      throw new RuntimeException("Call the non deprecated version of this method instead");
    }
 
    private long getMinRow() {
