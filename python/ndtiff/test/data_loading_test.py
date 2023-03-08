@@ -90,12 +90,12 @@ def test_v3_2_12bit_pycromanager_data(test_data_path):
     dataset = Dataset(data_path)
     assert(dataset.read_image(time=0, channel='DAPI').dtype == np.uint16)
 
-def test_v3_2_no_magellan_explore_channels():
+def test_v3_2_no_magellan_explore_channels(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_multi_channel')
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
 
-def test_v3_2_no_magellan_explore_no_channels():
+def test_v3_2_no_magellan_explore_no_channels(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_no_channel')
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
