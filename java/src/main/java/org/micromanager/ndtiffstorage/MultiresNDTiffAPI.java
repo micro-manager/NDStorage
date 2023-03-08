@@ -22,9 +22,18 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
 
    /**
     * Get a set of the (row, col) indices at which data has been acquired at this
+    * @param zName name of the xis
     * @param zIndex
     * @return
     */
+   public Set<Point> getTileIndicesWithDataAt(String zName, int zIndex);
+
+   /**
+    * Use getTileIndicesWithDataAt(String zName, int zIndex) instead
+    * @param zIndex
+    * @return
+    */
+   @Deprecated
    public Set<Point> getTileIndicesWithDataAt(int zIndex);
 
    /**
