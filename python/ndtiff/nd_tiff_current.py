@@ -282,7 +282,7 @@ class NDTiffDataset():
         time=None,
         position=None,
         row=None,
-        col=None,
+        column=None,
         **kwargs
     ):
         """Check if this image is present in the dataset
@@ -299,8 +299,8 @@ class NDTiffDataset():
             index of the XY position, if applicable (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
-            index of tile col for XY tiled datasets (Default value = None)
+        column : int
+            index of tile column for XY tiled datasets (Default value = None)
         **kwargs :
             names and integer positions of any other axes
 
@@ -311,7 +311,7 @@ class NDTiffDataset():
         """
         with self._lock:
             return self._does_have_image(self._consolidate_axes(
-                channel, z, position, time, row, col, **kwargs))
+                channel, z, position, time, row, column, **kwargs))
 
     def read_image(
         self,
@@ -320,7 +320,7 @@ class NDTiffDataset():
         time=None,
         position=None,
         row=None,
-        col=None,
+        column=None,
         **kwargs
     ):
         """
@@ -338,8 +338,8 @@ class NDTiffDataset():
             index of the XY position, if applicable (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
-            index of tile col for XY tiled datasets (Default value = None)
+        column : int
+            index of tile column for XY tiled datasets (Default value = None)
         **kwargs :
             names and integer positions of any other axes
 
@@ -350,7 +350,7 @@ class NDTiffDataset():
 
         """
         with self._lock:
-            axes = self._consolidate_axes(channel, z, position, time, row, col, **kwargs )
+            axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs )
 
             return self._do_read_image(axes)
 
@@ -361,7 +361,7 @@ class NDTiffDataset():
         time=None,
         position=None,
         row=None,
-        col=None,
+        column=None,
         **kwargs
     ):
         """
@@ -379,7 +379,7 @@ class NDTiffDataset():
             index of the XY position, if applicable (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
+        column : int
             index of tile col for XY tiled datasets (Default value = None)
 
         **kwargs :
@@ -392,7 +392,7 @@ class NDTiffDataset():
         """
         with self._lock:
             axes = self._consolidate_axes(
-                channel, z, position, time, row, col, **kwargs
+                channel, z, position, time, row, column, **kwargs
             )
 
             return self._do_read_metadata(axes)
@@ -440,7 +440,7 @@ class NDTiffDataset():
         return axes
 
     def _consolidate_axes(self, channel: int or str, z: int, position: int,
-                          time: int, row: int, col: int, **kwargs):
+                          time: int, row: int, column: int, **kwargs):
         """
         Pack axes into a convenient format
         """
@@ -450,7 +450,7 @@ class NDTiffDataset():
             del kwargs['channel_name']
 
         axis_positions = {'channel': channel, 'z': z, 'position': position,
-                    'time': time, 'row': row, 'col': col, **kwargs}
+                    'time': time, 'row': row, 'column': column, **kwargs}
         # ignore ones that are None
         axis_positions = {n: axis_positions[n] for n in axis_positions.keys() if axis_positions[n] is not None}
         for axis_name in axis_positions.keys():
@@ -954,10 +954,9 @@ class NDTiffPyramidDataset():
         z=None,
         time=None,
         position=None,
-        channel_name=None,
         resolution_level=0,
         row=None,
-        col=None,
+        column=None,
         **kwargs
     ):
         """Check if this image is present in the dataset
@@ -972,12 +971,10 @@ class NDTiffPyramidDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name : str
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
-            index of tile col for XY tiled datasets (Default value = None)
+        column : int
+            index of tile column for XY tiled datasets (Default value = None)
         resolution_level :
             0 is full resolution, otherwise represents downampling of pixels
             at 2 ** (resolution_level) (Default value = 0)
@@ -995,9 +992,8 @@ class NDTiffPyramidDataset():
                 z=z,
                 time=time,
                 position=position,
-                channel_name=channel_name,
                 row=row,
-                col=col,
+                column=column,
                 **kwargs
             )
 
@@ -1008,8 +1004,7 @@ class NDTiffPyramidDataset():
         time=None,
         position=None,
         row=None,
-        col=None,
-        channel_name=None,
+        column=None,
         resolution_level=0,
         **kwargs
     ):
@@ -1026,11 +1021,9 @@ class NDTiffPyramidDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name :
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
+        column : int
             index of tile col for XY tiled datasets (Default value = None)
         resolution_level :
             0 is full resolution, otherwise represents downampling of pixels
@@ -1050,8 +1043,7 @@ class NDTiffPyramidDataset():
                     time=time,
                     position=position,
                     row=row,
-                    col=col,
-                    channel_name=channel_name,
+                    column=column,
                     **kwargs)
 
     def read_metadata(
@@ -1060,9 +1052,8 @@ class NDTiffPyramidDataset():
         z=None,
         time=None,
         position=None,
-        channel_name=None,
         row=None,
-        col=None,
+        column=None,
         resolution_level=0,
         **kwargs
     ):
@@ -1079,11 +1070,9 @@ class NDTiffPyramidDataset():
             index of the time point, if applicable (Default value = None)
         position : int
             index of the XY position, if applicable (Default value = None)
-        channel_name :
-            Name of the channel. Overrides channel index if supplied (Default value = None)
         row : int
             index of tile row for XY tiled datasets (Default value = None)
-        col : int
+        column : int
             index of tile col for XY tiled datasets (Default value = None)
         resolution_level :
             0 is full resolution, otherwise represents downampling of pixels
@@ -1102,9 +1091,8 @@ class NDTiffPyramidDataset():
                     z=z,
                     time=time,
                     position=position,
-                    channel_name=channel_name,
                     row=row,
-                    col=col,
+                    column=column,
                     **kwargs)
 
     # TODO: this needs to be cleaned up probably--seems like this functionality belongs in pycromanager
