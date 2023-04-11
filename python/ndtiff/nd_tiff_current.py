@@ -754,7 +754,7 @@ class NDTiffDataset():
             chunks += (h * (np.max(row_values) - np.min(row_values) + 1),
                        w * (np.max(column_values) - np.min(column_values) + 1))
         else:
-            chunks += (w, h)
+            chunks += (h, w)
         if rgb:
             chunks += (3,)
 
