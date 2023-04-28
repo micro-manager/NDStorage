@@ -9,6 +9,7 @@ import dask.array as da
 import warnings
 import struct
 import threading
+from functools import partial
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 _POSITION_AXIS = "position"
@@ -649,6 +650,49 @@ class NDTiffDataset():
         for reader in self._readers_by_filename.values():
             reader.close()
 
+    def _read_one_image(self, block_id, axes_to_stack=None, axes_to_slice=None, stitched=False, rgb=False):
+        # a function that reads in one chunk of data
+        axes = {key: block_id[i] for i, key in enumerate(axes_to_stack.keys())}
+        if stitched:
+            # Combine all rows and cols into one stitched image
+            # get spatial layout of position indices
+            row_values = np.array(list(self.axes["row"]))
+            column_values = np.array(list(self.axes["column"]))
+            # fill in missing values
+            row_values = np.arange(np.min(row_values), np.max(row_values) + 1)
+            column_values = np.arange(np.min(column_values), np.max(column_values) + 1)
+            # make nested list of rows and columns
+            blocks = []
+            for row in row_values:
+                blocks.append([])
+                for column in column_values:
+                    # remove overlap between tiles
+                    if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
+                        blocks[-1].append(self._empty_tile)
+                    else:
+                        tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
+                        # remove half of the overlap around each tile so that that image stitches correctly
+                        # only need this for full resoution because downsampled ones already have the edges removed
+                        if np.any(self.overlap[0] > 0) and self._full_resolution:
+                            min_index = np.floor(self.overlap / 2).astype(np.int_)
+                            max_index = np.ceil(self.overlap / 2).astype(np.int_)
+                            tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
+                        blocks[-1].append(tile)
+
+            if rgb:
+                image = np.concatenate([np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
+                        for row in blocks],  axis=0)
+            else:
+                image = np.array(da.block(blocks))
+        else:
+            if not self.has_image(**axes, **axes_to_slice):
+                image = self._empty_tile
+            else:
+                image = self.read_image(**axes, **axes_to_slice)
+        for i in range(len(axes_to_stack.keys())):
+            image = image[None]
+        return image
+
     def as_array(self, axes=None, stitched=False, **kwargs):
         """
         Read all data image data as one big Dask array with last two axes as y, x and preceeding axes depending on data.
@@ -703,50 +747,6 @@ class NDTiffDataset():
             if 'column' in axes_to_slice:
                 del axes_to_slice['column']
 
-        def read_one_image(block_id, axes_to_stack=axes_to_stack, axes_to_slice=axes_to_slice):
-            # a function that reads in one chunk of data
-            axes = {key: block_id[i] for i, key in enumerate(axes_to_stack.keys())}
-            if stitched:
-                # Combine all rows and cols into one stitched image
-                # get spatial layout of position indices
-                row_values = np.array(list(self.axes["row"]))
-                column_values = np.array(list(self.axes["column"]))
-                # fill in missing values
-                row_values = np.arange(np.min(row_values), np.max(row_values) + 1)
-                column_values = np.arange(np.min(column_values), np.max(column_values) + 1)
-                # make nested list of rows and columns
-                blocks = []
-                for row in row_values:
-                    blocks.append([])
-                    for column in column_values:
-                        # remove overlap between tiles
-                        if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
-                            blocks[-1].append(self._empty_tile)
-                        else:
-                            tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
-                            # remove half of the overlap around each tile so that that image stitches correctly
-                            # only need this for full resoution because downsampled ones already have the edges removed
-                            if np.any(self.overlap[0] > 0) and self._full_resolution:
-                                min_index = np.floor(self.overlap / 2).astype(np.int_)
-                                max_index = np.ceil(self.overlap / 2).astype(np.int_)
-                                tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
-                            blocks[-1].append(tile)
-
-                if rgb:
-                    image = np.concatenate([np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
-                            for row in blocks],  axis=0)
-                else:
-                    image = np.array(da.block(blocks))
-            else:
-                if not self.has_image(**axes, **axes_to_slice):
-                    image = self._empty_tile
-                else:
-                    image = self.read_image(**axes, **axes_to_slice)
-            for i in range(len(axes_to_stack.keys())):
-                image = image[None]
-            return image
-
-
         chunks = tuple([(1,) * len(axes_to_stack[axis]) for axis in axes_to_stack.keys()])
         if stitched:
             row_values = np.array(list(self.axes["row"]))
@@ -759,7 +759,7 @@ class NDTiffDataset():
             chunks += (3,)
 
         array = da.map_blocks(
-            read_one_image,
+            partial(self._read_one_image, axes_to_stack=axes_to_stack, axes_to_slice=axes_to_slice, stitched=stitched, rgb=rgb),
             dtype=self.dtype,
             chunks=chunks,
             meta=self._empty_tile
