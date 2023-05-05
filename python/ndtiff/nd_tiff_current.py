@@ -149,7 +149,7 @@ class NDTiffDataset():
     Class that opens a single NDTiff dataset
     """
 
-    def __init__(self, dataset_path=None, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, **kwargs):
+    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, _summary_metadata=None,  **kwargs):
         """
         Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
@@ -158,10 +158,10 @@ class NDTiffDataset():
         ----------
         dataset_path : str
             Abosolute path of top level folder of a dataset on disk
-        remote_storage_monitor : JavaObjectShadow
-            Object that allows callbacks from remote NDTiffStorage. User's need not call this directly
         file_io: ndtiff.file_io.NDTiffFileIO
             A container containing various methods for interacting with files.
+        _summary_metadata : dict
+            Summary metadata for a dataset that is currently being acquired. Users shouldn't call this
         """
         self.file_io = file_io
         # if it is in fact a pyramid, the parent class will handle this. I think this implies that
@@ -169,23 +169,18 @@ class NDTiffDataset():
         # is tile overlap
         self._full_resolution = False
         self._lock = threading.RLock()
-        if remote_storage_monitor is not None:
+        if _summary_metadata is not None:
             # this dataset is a view of an active acquisition. Image data is being written by code on the Java side
             self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
-            self._remote_storage_monitor = remote_storage_monitor
-            self.summary_metadata = self._remote_storage_monitor.get_summary_metadata()
-            if dataset_path is None:
-                self.path = remote_storage_monitor.get_disk_location()
-            else:
-                self.path = dataset_path #Overriden by pyramid storage class creating this
-            self.path += "" if self.path[-1] == os.sep else os.sep
             self.axes = {}
             self.axes_types = {}
             self.index = {}
             self._readers_by_filename = {}
+            self._summary_metadata = _summary_metadata
+            self.path = dataset_path
+            self.path += "" if self.path[-1] == os.sep else os.sep
             return
 
-        self._remote_storage_monitor = None
         self.path = dataset_path
         self.path += "" if self.path[-1] == os.sep else os.sep
         self.index = self.read_index(self.path)
@@ -520,45 +515,6 @@ class NDTiffDataset():
         self.image_width = first_index["image_width"]
         self.image_height = first_index["image_height"]
 
-
-    def _add_storage_monitor_fn(self, acquisition, storage_monitor_fn, callback_fn=None, debug=False):
-        """
-        Add a callback function that gets called whenever a new image is writtern to disk (for acquisitions in
-        progress only)
-
-        Parameters
-        ----------
-        callback_fn : Callable
-            callable with that takes 1 argument, the axes dict of the image just written
-        """
-        if self._remote_storage_monitor is None:
-            raise Exception("Only valid for datasets with writing in progress")
-
-        connected_event = threading.Event()
-
-        push_port = self._remote_storage_monitor.get_port()
-        monitor_thread = threading.Thread(
-            target=storage_monitor_fn,
-            args=(
-                acquisition,
-                self,
-                push_port,
-                connected_event,
-                callback_fn,
-                debug,
-            ),
-            name="ImageSavedCallbackThread",
-        )
-
-        monitor_thread.start()
-
-        # Wait for pulling to start before you signal for pushing to start
-        connected_event.wait()  # wait for push/pull sockets to connect
-
-        # start pushing out all the image written events (including ones that have already accumulated)
-        self._remote_storage_monitor.start()
-        return monitor_thread
-
     def _does_have_image(self, axes):
         key = frozenset(axes.items())
         return key in self.index
@@ -771,7 +727,7 @@ class NDTiffDataset():
 class NDTiffPyramidDataset():
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""
 
-    def __init__(self, dataset_path=None, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
+    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, _summary_metadata=None):
         """
         Provides access to a NDTiffStorage pyramid dataset,
         either one currently being acquired or one on disk
@@ -780,28 +736,27 @@ class NDTiffPyramidDataset():
         ----------
         dataset_path : str
             Abosolute path of top level folder of a dataset on disk
-        remote_storage_monitor : JavaObjectShadow
-            Object that allows callbacks from remote NDTiffStorage. Users need not call this directly
         file_io: ndtiff.file_io.NDTiffFileIO
             A container containing various methods for interacting with files.
+        _summary_metadata : dict
+            Summary metadata, only not None for in progress datasets. Users need not call directly
         """
         self.file_io = file_io
         self._lock = threading.RLock()
-        if remote_storage_monitor is not None:
-            self._remote_storage_monitor = None # It belongs to the full resolution subclass
+        if _summary_metadata is not None:
             # this dataset is a view of an active acquisition. The storage exists on the java side
-            self.path = remote_storage_monitor.get_disk_location()
+            self.path = dataset_path
             self.path += "" if self.path[-1] == os.sep else os.sep
+            self.summary_metadata = _summary_metadata
 
             with self._lock:
-                full_res = NDTiffDataset(remote_storage_monitor=remote_storage_monitor,
-                                     dataset_path=self.path + "Full resolution" + os.sep)
+                full_res = NDTiffDataset(dataset_path=self.path + "Full resolution" + os.sep,
+                                         _summary_metadata=_summary_metadata, file_io=file_io)
                 self.res_levels = {0: full_res}
                 full_res._full_resolution = True
             # No information related higher res levels when remote storage monitoring right now
 
             #Copy stuff from the full res class for convenience
-            self.summary_metadata = self.res_levels[0].summary_metadata
             self.axes = self.res_levels[0].axes
 
             self.overlap = (np.array([self.summary_metadata["GridPixelOverlapY"],
@@ -811,7 +766,6 @@ class NDTiffPyramidDataset():
             return
 
         # Loading from disk
-        self._remote_storage_monitor = None
         self.path = dataset_path
         self.path += "" if self.path[-1] == os.sep else os.sep
         res_dirs = [
@@ -1094,11 +1048,6 @@ class NDTiffPyramidDataset():
                     row=row,
                     column=column,
                     **kwargs)
-
-    # TODO: this needs to be cleaned up probably--seems like this functionality belongs in pycromanager
-    def _add_storage_monitor_fn(self, acquisition, storage_monitor_fn, callback_fn=None, debug=False):
-        # Only valid for the full res data
-        return self.res_levels[0]._add_storage_monitor_fn(acquisition, storage_monitor_fn, callback_fn, debug)
 
     def _add_index_entry(self, index_entry):
         # Pass through to full res data

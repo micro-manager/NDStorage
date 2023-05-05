@@ -144,4 +144,5 @@ public interface NDTiffAPI {
     * Returns the maximum size of the writing task queue
     */
    public int getWritingQueueTaskMaxSize();
+
 }
