@@ -79,6 +79,10 @@ public class IndexEntryData {
       dataSetFinishedEntry_ = true;
    }
 
+   public String toString() {
+      return "IndexEntryData: " + axesKey_;
+   }
+
    public boolean isDataSetFinishedEntry() {
       return dataSetFinishedEntry_;
    }

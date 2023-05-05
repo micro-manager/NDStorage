@@ -1051,9 +1051,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             for (ImageWrittenListener l : imageWrittenListeners_) {
                l.imageWritten(IndexEntryData.createFinishedEntry());
             }
-            for (ImageWrittenListener l : imageWrittenListeners_) {
-               l.awaitCompletion();
-            }
+//            for (ImageWrittenListener l : imageWrittenListeners_) {
+//               l.awaitCompletion();
+//            }
             imageWrittenListeners_ = null;
             if (debugLogger_ != null) {
                debugLogger_.accept("Display settings written");
