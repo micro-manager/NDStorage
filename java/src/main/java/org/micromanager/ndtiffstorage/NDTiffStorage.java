@@ -1092,29 +1092,43 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       return displaySettings_;
    }
 
+   public void closeAndWait() throws InterruptedException {
+      doClose();
+   }
+
    public void close() {
+      //run close on a new thread
+        new Thread(new Runnable() {
+             @Override
+             public void run() {
+                doClose();
+             }
+        }).start();
+   }
+
+   private void doClose() {
       //put closing on differnt channel so as to not hang up EDT while waiting for finishing
       //but cant put on writing executor because thats shutdown
-      new Thread(new Runnable() {
-         @Override
-         public void run() {
-            if (!loaded_) {
-               while (true) {
-                  try {
-                     if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) break;
-                  } catch (InterruptedException e) {
-                     throw new RuntimeException(e);
-                  }
-               }
-            }
-            fullResStorage_.close();
-            for (ResolutionLevel s : lowResStorages_.values()) {
-               if (s != null) { //this only happens if the viewer requested new resolution levels that were never filled in because no iamges arrived
-                  s.close();
-               }
+      if (!loaded_) {
+         while (true) {
+            try {
+               if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) break;
+            } catch (InterruptedException e) {
+               throw new RuntimeException(e);
             }
          }
-      }).start();
+      }
+      try{
+      Thread.sleep(5000);
+      } catch (InterruptedException e) {
+         throw new RuntimeException(e);
+      }
+      fullResStorage_.close();
+      for (ResolutionLevel s : lowResStorages_.values()) {
+         if (s != null) { //this only happens if the viewer requested new resolution levels that were never filled in because no iamges arrived
+            s.close();
+         }
+      }
    }
 
    public String getDiskLocation() {

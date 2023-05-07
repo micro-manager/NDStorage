@@ -88,6 +88,12 @@ public interface NDTiffAPI {
    public void close();
 
    /**
+    * Release all resources and block until they are released
+    */
+    public void closeAndWait() throws InterruptedException;
+
+
+   /**
     * [x_min, y_min, x_max, y_max] pixel bounds where data has been acquired (can be negative).
     * In the simplest case this will be [0, 0, width, height]
     * @return 
