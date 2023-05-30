@@ -228,7 +228,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          throw new RuntimeException("Couldn't make acquisition directory");
       }
 
-      blockingWritingTaskHandoff(new Runnable() {
+      Future f = blockingWritingTaskHandoff(new Runnable() {
          @Override
          public void run() {
             //create directory for full res data
@@ -254,6 +254,12 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             lowResStorages_ = new TreeMap<Integer, ResolutionLevel>();
          }
       });
+      // Wait until the storage initialization is complete to prevent a race condition
+      try {
+         f.get();
+      } catch (Exception e) {
+         throw new RuntimeException("Couldn't initialize storage");
+      }
    }
 
    static File createDir(String dir) {
