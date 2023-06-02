@@ -11,6 +11,27 @@ import struct
 import threading
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
+_POSITION_AXIS = "position"
+_ROW_AXIS = "row"
+_COLUMN_AXIS = "column"
+_Z_AXIS = "z"
+_TIME_AXIS = "time"
+_CHANNEL_AXIS = "channel"
+
+_AXIS_ORDER = {_ROW_AXIS: 7,
+               _COLUMN_AXIS: 6,
+               _POSITION_AXIS: 5, 
+               _TIME_AXIS: 4, 
+               _CHANNEL_AXIS:3, 
+               _Z_AXIS:2}
+
+def _get_axis_order_key(dict_item):
+    axis_name = dict_item[0]
+    if axis_name in _AXIS_ORDER.keys():
+        return _AXIS_ORDER[axis_name]
+    else:
+        return 3  # stack next to channel axes
+
 class _MultipageTiffReader:
     """
     Class corresponsing to a single multipage tiff file in a Micro-Magellan dataset.
@@ -270,13 +291,6 @@ class _ResolutionLevel:
 class NDTiff_v2_0():
     """Class that opens a single NDTiffStorage dataset"""
 
-    _POSITION_AXIS = "position"
-    _ROW_AXIS = "row"
-    _COLUMN_AXIS = "column"
-    _Z_AXIS = "z"
-    _TIME_AXIS = "time"
-    _CHANNEL_AXIS = "channel"
-
     def __init__(self, dataset_path=None, full_res_only=True, remote_storage_monitor=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO):
         """
         Creat a Object providing access to and NDTiffStorage dataset, either one currently being acquired or one on disk
@@ -369,6 +383,8 @@ class NDTiff_v2_0():
                         if axis not in self.axes.keys():
                             self.axes[axis] = set()
                         self.axes[axis].add(position)
+                # Sort axes according to _AXIS_ORDER
+                self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
 
                 # figure out the mapping of channel name to position by reading image metadata
                 print("\rReading channel names...", end="")
@@ -393,17 +409,17 @@ class NDTiff_v2_0():
         print("\rDataset opened                ")
 
     def _read_channel_names(self):
-        if self._CHANNEL_AXIS in self.axes.keys():
+        if _CHANNEL_AXIS in self.axes.keys():
             self._channel_names = {}
             for key in self.res_levels[0].index.keys():
                 axes = {axis: position for axis, position in key}
                 if (
-                    self._CHANNEL_AXIS in axes.keys()
-                    and axes[self._CHANNEL_AXIS] not in self._channel_names.values()
+                    _CHANNEL_AXIS in axes.keys()
+                    and axes[_CHANNEL_AXIS] not in self._channel_names.values()
                 ):
                     channel_name = self.res_levels[0].read_metadata(axes)["Channel"]
-                    self._channel_names[channel_name] = axes[self._CHANNEL_AXIS]
-                if len(self._channel_names.values()) == len(self.axes[self._CHANNEL_AXIS]):
+                    self._channel_names[channel_name] = axes[_CHANNEL_AXIS]
+                if len(self._channel_names.values()) == len(self.axes[_CHANNEL_AXIS]):
                     break
 
     def _parse_first_index(self, first_index):
@@ -468,8 +484,8 @@ class NDTiff_v2_0():
         Parameters
         ----------
         axes : list
-            list of axes names over which to iterate and merge into a stacked array. If None, all axes will be used.
-            The order of axes supplied in this list will be the order of the axes of the returned dask array
+            list of axes names over which to iterate and merge into a stacked array. The order of axes supplied in this 
+            list will be the order of the axes of the returned dask array. If None, all axes will be used in PTCZYX order.
         stitched : bool
             If true and tiles were acquired in a grid, lay out adjacent tiles next to one another (Default value = False)
         **kwargs :
@@ -722,19 +738,19 @@ class NDTiff_v2_0():
     def _consolidate_axes(self, channel, channel_name, z, position, time, row, col, kwargs):
         axes = {}
         if channel is not None:
-            axes[self._CHANNEL_AXIS] = channel
+            axes[_CHANNEL_AXIS] = channel
         if channel_name is not None:
-            axes[self._CHANNEL_AXIS] = self._channel_names[channel_name]
+            axes[_CHANNEL_AXIS] = self._channel_names[channel_name]
         if z is not None:
-            axes[self._Z_AXIS] = z
+            axes[_Z_AXIS] = z
         if position is not None:
-            axes[self._POSITION_AXIS] = position
+            axes[_POSITION_AXIS] = position
         if time is not None:
-            axes[self._TIME_AXIS] = time
+            axes[_TIME_AXIS] = time
         if row is not None:
-            axes[self._ROW_AXIS] = row
+            axes[_ROW_AXIS] = row
         if col is not None:
-            axes[self._COLUMN_AXIS] = col
+            axes[_COLUMN_AXIS] = col
         for other_axis_name in kwargs.keys():
             axes[other_axis_name] = kwargs[other_axis_name]
         return axes
