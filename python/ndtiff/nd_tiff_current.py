@@ -11,6 +11,7 @@ import struct
 import threading
 from functools import partial
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
+import time
 
 _POSITION_AXIS = "position"
 _ROW_AXIS = "row"
@@ -428,7 +429,7 @@ class NDTiffDataset():
                 self.axes[axis_name] = sorted(list(set(self.axes[axis_name])))
 
             # update the map of channel names to channel indices
-            self._parse_string_axes()
+            self._parse_string_axes(axes)
 
         if not hasattr(self, 'image_width'):
             self._parse_first_index(index_entry)
@@ -456,21 +457,24 @@ class NDTiffDataset():
 
         return axis_positions
 
-    def _parse_string_axes(self):
+    def _parse_string_axes(self, axes=None):
         """
         As of NDTiff 3.2, axes are allowed to take string values: e.g. {'channel': 'DAPI'}
         This is allowed on any axis. This function returns a tuple of possible values along
         the string axis in order to be able to interconvert integer values and string values.
+
+        param axes: if not None, only parse the string axis values for the given axes
         """
         # iterate through the key_combos for each image
         if self.major_version >= 3 and self.minor_version >= 2:
             self._string_axes_values = {axis_name: [] for axis_name in self.axes_types.keys()
                                         if self.axes_types[axis_name] is str}
-            for key in self.index.keys():
+            for key in self.index.keys() if axes is None else [[(key, axes[key]) for key in axes.keys()]]:
                 for axis_name, position in key:
                     if axis_name in self._string_axes_values.keys() and \
                             position not in self._string_axes_values[axis_name]:
                         self._string_axes_values[axis_name].append(position)
+
             if _CHANNEL_AXIS in self._string_axes_values:
                 self._channels = {name: self._string_axes_values[_CHANNEL_AXIS].index(name)
                                   for name in self._string_axes_values[_CHANNEL_AXIS]}
