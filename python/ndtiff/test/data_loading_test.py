@@ -8,6 +8,14 @@ def test_v2_data(test_data_path):
     dataset = Dataset(data_path)
     assert(np.mean(dataset.as_array()) > 0)
 
+def test_v2_data_axis_sorting(test_data_path):
+    data_path = os.path.join(test_data_path, "v2", "ndtiffv2.0_test")
+    dataset = Dataset(data_path)
+    num_timepoints = len(dataset.axes['time'])
+    num_channels = len(dataset.axes['channel'])
+    data = dataset.as_array(axes=None)
+    assert data.shape[:-2] == (num_timepoints, num_channels)
+
 def test_v3_data(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'ndtiffv3.0_test')
     dataset = Dataset(data_path)
