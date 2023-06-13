@@ -8,6 +8,7 @@ import json
 import dask.array as da
 import warnings
 import struct
+from sortedcontainers import SortedSet
 import threading
 from functools import partial
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
@@ -224,11 +225,9 @@ class NDTiffDataset():
         for axes_combo in self.index.keys():
             for axis, position in axes_combo:
                 if axis not in self.axes.keys():
-                    self.axes[axis] = []
+                    self.axes[axis] = SortedSet()
                     self.axes_types[axis] = type(position)
-                self.axes[axis].append(position)
-                # get sorted unique elements
-                self.axes[axis] = sorted(list(set(self.axes[axis])))
+                self.axes[axis].add(position)
         # Sort axes according to _AXIS_ORDER
         self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
 
@@ -423,10 +422,9 @@ class NDTiffDataset():
             # update the axes that have been seen
             for axis_name in axes.keys():
                 if axis_name not in self.axes.keys():
-                    self.axes[axis_name] = []
+                    self.axes[axis_name] = SortedSet()
                     self.axes_types[axis_name] = type(axes[axis_name])
-                self.axes[axis_name].append(axes[axis_name])
-                self.axes[axis_name] = sorted(list(set(self.axes[axis_name])))
+                self.axes[axis_name].add(axes[axis_name])
 
             # update the map of channel names to channel indices
             self._parse_string_axes(axes)
@@ -696,7 +694,7 @@ class NDTiffDataset():
         if axes is None:
             axes = self.axes.keys()
         axes_to_slice = kwargs
-        axes_to_stack = {key: self.axes[key] for key in axes if key not in kwargs.keys()}
+        axes_to_stack = {key: list(self.axes[key]) for key in axes if key not in kwargs.keys()}
         if stitched:
             if 'row' in axes_to_stack:
                 del axes_to_stack['row']
