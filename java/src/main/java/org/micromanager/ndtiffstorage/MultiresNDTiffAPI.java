@@ -59,6 +59,13 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
    public int getNumResLevels();
 
    /**
+    * Increase the number of resolutions in the pyramid. Needed if the UI wants to
+    * Zoom out further than the current max resolution level
+    * @param newMaxResolutionLevel
+    */
+   public void increaseMaxResolutionLevel(int newMaxResolutionLevel);
+
+   /**
     * Get a single stitched image that spans multiple tiles
     *
     * @param axes HashMap mapping axis names to positions

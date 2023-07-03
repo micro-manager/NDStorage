@@ -534,17 +534,19 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 //   }
    /**
     * create an additional lower resolution levels for zooming purposes
+    * Create the resolutions, but dont do anything
     */
-   private void addResolutionsUpTo(int index, boolean rgb, int bitDepth)
+   private void addResolutionsUpTo(int index)
            throws InterruptedException, ExecutionException {
          if (index <= maxResolutionLevel_) {
             return;
          }
-         int oldLevel = maxResolutionLevel_;
-         maxResolutionLevel_ = index;
-         for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
-            populateNewResolutionLevel(i, rgb, bitDepth);
-         }
+//         // take the max
+//         int oldLevel = lowResStorages_.keySet().stream().max(Integer::compare).orElse(0);
+//
+//         for (int i = oldLevel + 1; i <= maxResolutionLevel_; i++) {
+//            populateNewResolutionLevel(i);
+//         }
    }
 
    private void downsample(Object currentLevelPix, Object previousLevelPix, int fullResRow,
@@ -650,27 +652,51 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
    }
 
-   private void populateNewResolutionLevel(int resolutionIndex, boolean rgb, int bitDepth) {
-      createDownsampledStorage(resolutionIndex);
-      //add all tiles from existing resolution levels to this new one
-      ResolutionLevel previousLevelStorage
-              = resolutionIndex == 1 ? fullResStorage_ : lowResStorages_.get(resolutionIndex - 1);
-      Set<String> imageKeys = previousLevelStorage.imageKeys();
-      for (String key : imageKeys) {
-         HashMap<String, Object> axes = IndexEntryData.deserializeAxes(key);
-         int fullResCol = (Integer) axes.get(COL_AXIS);
-         int fullResRow = (Integer) axes.get(ROW_AXIS);
+   private void populateNewResolutionLevel(int resolutionIndex, boolean addToLowResStorage) {
+      // could be accessed from UI or from data arriving
+      synchronized (lowResStorages_) {
+         if (lowResStorages_.containsKey(resolutionIndex)) {
+            return; // already happened for another reason
+         }
+         createDownsampledStorage(resolutionIndex);
 
-//         int fullResPosIndex = posManager_.getFullResPositionIndex(, resolutionIndex - 1);
-//         int rowIndex = (int) posManager_.getGridRow(fullResPosIndex, resolutionIndex);
-//         int colIndex = (int) posManager_.getGridCol(fullResPosIndex, resolutionIndex);
-         TaggedImage ti = previousLevelStorage.getImage(key);
-         addToLowResStorage(ti, axes,
-                 resolutionIndex - 1, fullResRow, fullResCol, rgb, bitDepth);
+         if (addToLowResStorage) {
+            //add all tiles from existing resolution levels to this new one
+            ResolutionLevel previousLevelStorage
+                    = resolutionIndex == 1 ? fullResStorage_ : lowResStorages_.get(resolutionIndex - 1);
+            Set<String> imageKeys = previousLevelStorage.imageKeys();
+            for (String key : imageKeys) {
+               HashMap<String, Object> axes = IndexEntryData.deserializeAxes(key);
+               int fullResCol = (Integer) axes.get(COL_AXIS);
+               int fullResRow = (Integer) axes.get(ROW_AXIS);
+
+               TaggedImage ti = previousLevelStorage.getImage(key);
+               int bitDepth = previousLevelStorage.getEssentialImageMetadata(key).bitDepth;
+               boolean rgb = previousLevelStorage.getEssentialImageMetadata(key).rgb;
+               addToLowResStorage(ti, axes,
+                       resolutionIndex - 1, fullResRow, fullResCol, rgb, bitDepth);
+            }
+         }
+      }
+   }
+
+   @Override
+   public void increaseMaxResolutionLevel(int newMaxResolutionLevel) {
+      int oldMaxResolutionLevel = maxResolutionLevel_;
+      maxResolutionLevel_ = Math.max(newMaxResolutionLevel, oldMaxResolutionLevel);
+      if (fullResStorage_.imageKeys().size() == 0) {
+         //nothing to do because data not yet arrived
+         return;
+      }
+
+      for (int i = oldMaxResolutionLevel + 1; i <= maxResolutionLevel_; i++) {
+         //add any new one this requires
+         populateNewResolutionLevel(i, true);
       }
    }
 
    /**
+    * Add to all low res storages
     * return a future for when the current res level is done writing
     */
    private void addToLowResStorage(TaggedImage img, HashMap<String, Object> axes,
@@ -684,7 +710,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             //Create this storage level if needed and add all existing tiles form the previous one
             if (!lowResStorages_.containsKey(resolutionIndex)) {
                //re add all tiles from previous res level
-               populateNewResolutionLevel(resolutionIndex, rgb, bitDepth);
+               populateNewResolutionLevel(resolutionIndex, false);
             }
 
             //copy and change and row and col to reflect lower resolution
@@ -912,7 +938,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                                   / 4)) / Math.log(2));
                   int row = (Integer) axes.get(ROW_AXIS);
                   int col = (Integer) axes.get(COL_AXIS);
-                  addResolutionsUpTo(maxResIndex, rgb, bitDepth);
+                  addResolutionsUpTo(maxResIndex);
                   addToLowResStorage(ti, axes, 0, row, col, rgb, bitDepth);
                }
 
@@ -977,6 +1003,10 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    @Override
    public TaggedImage getImage(HashMap<String, Object> axes, int dsIndex) {
       //return a single tile from the full res image
+      if (fullResStorage_ == null || lowResStorages_ == null ||
+              (!lowResStorages_.containsKey(dsIndex) && dsIndex != 0) ){
+         return null;
+      }
       if (dsIndex == 0) {
          return fullResStorage_.getImage(IndexEntryData.serializeAxes(axes));
       } else {
