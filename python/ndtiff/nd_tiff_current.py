@@ -553,7 +553,7 @@ class NDTiffDataset():
 
     def read_index(self, path):
         print("\rReading index...          ", end="")
-        with self.file_io.open(path + os.sep + "NDTiff.index", "rb") as index_file:
+        with self.file_io.open(path + "NDTiff.index", "rb") as index_file:
             data = index_file.read()
         entries = {}
         position = 0
