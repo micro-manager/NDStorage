@@ -143,3 +143,41 @@ def test_labeled_positions(test_data_path):
     pixel_00 = (1, 2, 0)
     for idx, image in enumerate(data):
         assert image[0, 0] == pixel_00[idx]
+
+def test_unordered_z_axis(test_data_path):
+    """
+    This dataset was acquired with the following events:
+
+    events1 = [{'axes': {'z': z_idx}, 'z': z_idx} for z_idx in range(10)]
+    events2 = [{'axes': {'z': z_idx}, 'z': z_idx} for z_idx in range(-10, 0)]
+
+    and the following image process hook function:
+
+    def fun(image, metadata):
+        if not hasattr(fun, "idx"):
+            fun.idx = 0
+
+        image[0, 0] = np.uint16(fun.idx)
+
+        fun.idx += 1
+
+        return image, metadata
+
+    Here we test that the axis and image order of the dataset is as expected.
+    """
+
+    data_path = os.path.join(test_data_path, 'v3', 'unordered_z_1')
+    acquisition_z_axis = list(range(10)) + list(range(-10, 0))
+    sorted_z_axis = sorted(acquisition_z_axis)
+
+    dataset = Dataset(data_path)
+    data = np.asarray(dataset.as_array())
+
+    # ndtiff sorts the dataset axes. Check that the position axis is correctly
+    # sorted
+    assert dataset.axes['z'] == set(sorted_z_axis)
+
+    # Check that data is in the sorted(acquisition_z_axis) order
+    pixel_00 = sorted_z_axis
+    for idx, image in enumerate(data):
+        assert image[0, 0] == pixel_00[idx]
