@@ -11,6 +11,9 @@ with open(path, encoding="utf8") as f:
     exec(f.read(), {}, version_ns)
 version = version_ns["__version__"]
 
+with open("requirements.txt") as f:
+    requirements = f.read().splitlines()
+
 setuptools.setup(
     name="ndtiff",
     version=version,
@@ -21,10 +24,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/micro-manager/NDTiffStorage",
     packages=setuptools.find_packages(),
-    install_requires=[
-        "numpy",
-        "dask[array]>=2022.2.0",
-    ],
+    install_requires=requirements,
     python_requires=">=3.6",
     extras_require={
         "test": [
