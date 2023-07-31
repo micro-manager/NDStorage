@@ -477,7 +477,8 @@ class NDTiffDataset():
             if single_axes_position is None:
                 # parse all axes_positions in the dataset
                 for single_axes_position in self.index.keys():
-                    for axis_name, axis_value in single_axes_position.items():
+                    # this is a set of tuples of (axis_name, axis_value)
+                    for axis_name, axis_value in single_axes_position:
                         if axis_name in self._string_axes_values.keys() and \
                                 axis_value not in self._string_axes_values[axis_name]:
                             self._string_axes_values[axis_name].append(axis_value)
