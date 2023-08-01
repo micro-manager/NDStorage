@@ -17,7 +17,6 @@
 package org.micromanager.ndtiffstorage;
 
 import java.awt.Point;
-import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -39,7 +38,6 @@ import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
 import javax.swing.*;
-import javax.swing.text.html.HTML;
 
 /**
  * This class manages multiple multipage Tiff datasets, averaging multiple 2x2
@@ -92,6 +90,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private volatile boolean discardData_ = false;
 
    private int detectedMajorVersion_;
+   private volatile Exception writingException_ = null;
 
    /**
     * Constructor to load existing storage from disk dir --top level saving
@@ -793,7 +792,15 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       discardData_ = true;
    }
 
-
+   /**
+    * Check if an exception has occured on the writing thread, and if so propagate it
+    * to other API calls
+    */
+   private void checkWritingException() {
+      if (writingException_ != null) {
+         throw new RuntimeException(writingException_);
+      }
+   }
 
    /**
     * This version works for regular, non-multiresolution data
@@ -801,6 +808,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     */
    public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axessss,
                         boolean rgb, int bitDepth, int imageHeight, int imageWidth) {
+      checkWritingException();
       TaggedImage ti = new TaggedImage(pixels, metadata);
 
       // Make sure each axis takes all integer or all string values
@@ -872,8 +880,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                }
             }
 
-         } catch (IOException ex) {
-            throw new RuntimeException(ex.toString());
+         } catch (Exception ex) {
+            writingException_ = ex;
          }
       }
    });
@@ -896,6 +904,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    @Override
    public Future putImageMultiRes( Object pixels, JSONObject metadata, final HashMap<String, Object> axes,
                                   boolean rgb, int bitDepth, int imageHeight, int imageWidth) {
+      checkWritingException();
       TaggedImage ti = new TaggedImage(pixels, metadata);
       if (!firstImageAdded_) {
          //technically this doesnt need to be parsed here, because it should be fixed for the whole
@@ -1043,6 +1052,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * Singal to finish writing and block until everything pending is done
     */
    public void finishedWriting()  {
+      checkWritingException();
       if (loaded_) {
          return;
       }
@@ -1129,10 +1139,12 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    public void closeAndWait() throws InterruptedException {
+      checkWritingException();
       doClose();
    }
 
    public void close() {
+      checkWritingException();
       //run close on a new thread
         new Thread(new Runnable() {
              @Override
