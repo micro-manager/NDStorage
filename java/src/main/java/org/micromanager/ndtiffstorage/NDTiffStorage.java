@@ -1154,11 +1154,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
             }
          }
       }
-      try{
-      Thread.sleep(5000);
-      } catch (InterruptedException e) {
-         throw new RuntimeException(e);
-      }
       fullResStorage_.close();
       for (ResolutionLevel s : lowResStorages_.values()) {
          if (s != null) { //this only happens if the viewer requested new resolution levels that were never filled in because no iamges arrived
