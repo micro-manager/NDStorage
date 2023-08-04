@@ -455,23 +455,39 @@ class NDTiffDataset():
 
         return axis_positions
 
-    def _parse_string_axes(self, axes=None):
+    def _parse_string_axes(self, single_axes_position=None):
         """
         As of NDTiff 3.2, axes are allowed to take string values: e.g. {'channel': 'DAPI'}
         This is allowed on any axis. This function returns a tuple of possible values along
         the string axis in order to be able to interconvert integer values and string values.
 
-        param axes: if not None, only parse the string axis values for the given axes
+        param single_axes_position: if provided, only parse this newly added entry
         """
         # iterate through the key_combos for each image
         if self.major_version >= 3 and self.minor_version >= 2:
-            self._string_axes_values = {axis_name: [] for axis_name in self.axes_types.keys()
-                                        if self.axes_types[axis_name] is str}
-            for key in self.index.keys() if axes is None else [[(key, axes[key]) for key in axes.keys()]]:
-                for axis_name, position in key:
+            # keep track of the values for each axis with string values if not doing so already
+            if not hasattr(self, '_string_axes_values'):
+                self._string_axes_values = {}
+            # if this is a new axis_value for a string axis, add a list to populate
+            for string_axis_name in [axis_name for axis_name in self.axes_types.keys() if self.axes_types[axis_name] is str]:
+                if string_axis_name not in self._string_axes_values.keys():
+                    self._string_axes_values[string_axis_name] = []
+
+            # add new axis values to the list of values that have been seen
+            if single_axes_position is None:
+                # parse all axes_positions in the dataset
+                for single_axes_position in self.index.keys():
+                    # this is a set of tuples of (axis_name, axis_value)
+                    for axis_name, axis_value in single_axes_position:
+                        if axis_name in self._string_axes_values.keys() and \
+                                axis_value not in self._string_axes_values[axis_name]:
+                            self._string_axes_values[axis_name].append(axis_value)
+            else:
+                # parse only this set of axes positions
+                for axis_name, axis_value in single_axes_position.items():
                     if axis_name in self._string_axes_values.keys() and \
-                            position not in self._string_axes_values[axis_name]:
-                        self._string_axes_values[axis_name].append(position)
+                            axis_value not in self._string_axes_values[axis_name]:
+                        self._string_axes_values[axis_name].append(axis_value)
 
             if _CHANNEL_AXIS in self._string_axes_values:
                 self._channels = {name: self._string_axes_values[_CHANNEL_AXIS].index(name)
@@ -485,13 +501,13 @@ class NDTiffDataset():
                 # AcqEngJ
                 if _CHANNEL_AXIS in self.axes.keys():
                     for key in self.index.keys():
-                        axes = {axis: position for axis, position in key}
+                        single_axes_position = {axis: position for axis, position in key}
                         if (
-                            _CHANNEL_AXIS in axes.keys()
-                            and axes[_CHANNEL_AXIS] not in self._channels.values()
+                            _CHANNEL_AXIS in single_axes_position.keys()
+                            and single_axes_position[_CHANNEL_AXIS] not in self._channels.values()
                         ):
-                            channel_name = self.read_metadata(**axes)["Channel"]
-                            self._channels[channel_name] = axes[_CHANNEL_AXIS]
+                            channel_name = self.read_metadata(**single_axes_position)["Channel"]
+                            self._channels[channel_name] = single_axes_position[_CHANNEL_AXIS]
                         if len(self._channels.values()) == len(self.axes[_CHANNEL_AXIS]):
                             break
 
@@ -553,7 +569,7 @@ class NDTiffDataset():
 
     def read_index(self, path):
         print("\rReading index...          ", end="")
-        with self.file_io.open(path + os.sep + "NDTiff.index", "rb") as index_file:
+        with self.file_io.open(path + "NDTiff.index", "rb") as index_file:
             data = index_file.read()
         entries = {}
         position = 0

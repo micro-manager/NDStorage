@@ -43,6 +43,12 @@ public interface NDTiffAPI {
    public boolean isFinished();
 
    /**
+    * Throw an exception if there was an error writing to disk.
+    * This is needed because writing occurs on a seperate thread for performance reasons
+    */
+   public void checkForWritingException() throws Exception;
+
+   /**
     * Set display settings for storage. No particular structure required as the
     * storage class will only save and load them but not do anything with them.
     *
