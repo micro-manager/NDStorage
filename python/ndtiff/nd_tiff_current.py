@@ -610,7 +610,7 @@ class NDTiffDataset():
 
     def _read_one_image(self, block_id, axes_to_stack=None, axes_to_slice=None, stitched=False, rgb=False):
         # a function that reads in one chunk of data
-        axes = {key: block_id[i] for i, key in enumerate(axes_to_stack.keys())}
+        axes = {key: axes_to_stack[key][block_id[i]] for i, key in enumerate(axes_to_stack.keys())}
         if stitched:
             # Combine all rows and cols into one stitched image
             # get spatial layout of position indices

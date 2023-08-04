@@ -118,8 +118,8 @@ def test_labeled_positions(test_data_path):
         {'axes': {'position': 'Pos1'}, 'x': 0, 'y': 2}
     ]
 
-    Further, images at position ('Pos2', 'Pos0', 'Pos1') has (0, 0) pixels equal
-    to (0, 1, 2).
+    Further, images at position ('Pos2', 'Pos0', 'Pos1') have (0, 0) pixels
+    equal to (0, 1, 2).
 
     Here we test that the axis and image order of the dataset is as expected.
     """
@@ -168,7 +168,8 @@ def test_unordered_z_axis(test_data_path):
 
     data_path = os.path.join(test_data_path, 'v3', 'unordered_z_1')
     acquisition_z_axis = list(range(10)) + list(range(-10, 0))
-    sorted_z_axis = sorted(acquisition_z_axis)
+    sorting_index = np.argsort(acquisition_z_axis)
+    sorted_z_axis = np.sort(acquisition_z_axis)
 
     dataset = Dataset(data_path)
     data = np.asarray(dataset.as_array())
@@ -178,6 +179,6 @@ def test_unordered_z_axis(test_data_path):
     assert dataset.axes['z'] == set(sorted_z_axis)
 
     # Check that data is in the sorted(acquisition_z_axis) order
-    pixel_00 = sorted_z_axis
+    pixel_00 = sorting_index
     for idx, image in enumerate(data):
         assert image[0, 0] == pixel_00[idx]
