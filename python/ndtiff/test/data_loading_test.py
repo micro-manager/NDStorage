@@ -108,5 +108,77 @@ def test_v3_2_no_magellan_explore_no_channels(test_data_path):
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
 
+def test_labeled_positions(test_data_path):
+    """
+    This dataset was acquired with the following events:
 
+    events = [
+        {'axes': {'position': 'Pos2'}, 'x': 0, 'y': 0},
+        {'axes': {'position': 'Pos0'}, 'x': 0, 'y': 1},
+        {'axes': {'position': 'Pos1'}, 'x': 0, 'y': 2}
+    ]
 
+    Further, images at position ('Pos2', 'Pos0', 'Pos1') have (0, 0) pixels
+    equal to (0, 1, 2).
+
+    Here we test that the axis and image order of the dataset is as expected.
+    """
+
+    data_path = os.path.join(test_data_path, 'v3', 'labeled_positions_1')
+    position_names = ('Pos2', 'Pos0', 'Pos1')
+
+    dataset = Dataset(data_path)
+    data = np.asarray(dataset.as_array())
+
+    # ndtiff sorts the dataset axes. Check that the position axis is correctly
+    # sorted
+    assert dataset.axes['position'] == set(('Pos0', 'Pos1', 'Pos2'))
+
+    # Check that the image metadata includes the position name
+    for position_name in position_names:
+        metadata = dataset.read_metadata(position=position_name)
+        assert metadata['PositionName'] == position_name
+
+    # Check that data is in the ('Pos0', 'Pos1', 'Pos2') order
+    pixel_00 = (1, 2, 0)
+    for idx, image in enumerate(data):
+        assert image[0, 0] == pixel_00[idx]
+
+def test_unordered_z_axis(test_data_path):
+    """
+    This dataset was acquired with the following events:
+
+    events1 = [{'axes': {'z': z_idx}, 'z': z_idx} for z_idx in range(10)]
+    events2 = [{'axes': {'z': z_idx}, 'z': z_idx} for z_idx in range(-10, 0)]
+
+    and the following image process hook function:
+
+    def fun(image, metadata):
+        if not hasattr(fun, "idx"):
+            fun.idx = 0
+
+        image[0, 0] = np.uint16(fun.idx)
+
+        fun.idx += 1
+
+        return image, metadata
+
+    Here we test that the axis and image order of the dataset is as expected.
+    """
+
+    data_path = os.path.join(test_data_path, 'v3', 'unordered_z_1')
+    acquisition_z_axis = list(range(10)) + list(range(-10, 0))
+    sorting_index = np.argsort(acquisition_z_axis)
+    sorted_z_axis = np.sort(acquisition_z_axis)
+
+    dataset = Dataset(data_path)
+    data = np.asarray(dataset.as_array())
+
+    # ndtiff sorts the dataset axes. Check that the position axis is correctly
+    # sorted
+    assert dataset.axes['z'] == set(sorted_z_axis)
+
+    # Check that data is in the sorted(acquisition_z_axis) order
+    pixel_00 = sorting_index
+    for idx, image in enumerate(data):
+        assert image[0, 0] == pixel_00[idx]
