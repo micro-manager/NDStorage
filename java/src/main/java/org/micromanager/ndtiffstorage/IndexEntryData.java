@@ -1,5 +1,6 @@
 package org.micromanager.ndtiffstorage;
 
+import java.nio.charset.StandardCharsets;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
@@ -80,7 +81,9 @@ public class IndexEntryData {
    }
 
    public String toString() {
-      return "IndexEntryData: " + axesKey_;
+      // convert bytebuffer to string
+      Buffer b = this.asByteBuffer();
+      return StandardCharsets.UTF_8.decode((ByteBuffer) b).toString();
    }
 
    public boolean isDataSetFinishedEntry() {

@@ -32,7 +32,7 @@ public interface NDTiffAPI {
     * @param imageHeight
     * @param imageWidth
     */
-   public Future putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
+   public Future<IndexEntryData> putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
                           boolean rgb, int bitDepth, int imageHeight, int imageWidth);
 
    /**
@@ -77,9 +77,9 @@ public interface NDTiffAPI {
    public void finishedWriting();
 
    /**
-    * Add a listener that gets notified when something written to disk
-    * To minimize performance hit, this listener should be extremely fast
+    * @deprecated
     */
+   @Deprecated
    public void addImageWrittenListener(ImageWrittenListener iwc);
 
    /**
@@ -107,12 +107,19 @@ public interface NDTiffAPI {
    public int[] getImageBounds();
 
    /**
-    * Get a single image from full resolution data
+    * Get a single image
     * 
     * @param axes 
     * @return 
     */
    public TaggedImage getImage(HashMap<String, Object> axes);
+
+   /**
+    * Get a sub-image of the image with the specified axes
+    *
+    */
+   public TaggedImage getSubImage(HashMap<String, Object> axes,
+                                  int xOffset, int yOffset, int width, int height);
 
    /**
     * Get the essential metadata for the image (width, height, byte depth, rgb),

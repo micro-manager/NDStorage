@@ -49,7 +49,7 @@ public interface MultiresNDTiffAPI extends NDTiffAPI {
     * @param imageWidth
     * @return
     */
-   public Future putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
+   public Future<IndexEntryData> putImageMultiRes(Object pixels, JSONObject metadata, HashMap<String, Object> axes,
                                   boolean rgb, int bitDepth, int imageHeight, int imageWidth) ;
 
    /**
