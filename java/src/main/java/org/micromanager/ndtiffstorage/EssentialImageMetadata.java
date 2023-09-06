@@ -1,5 +1,8 @@
 package org.micromanager.ndtiffstorage;
 
+import java.nio.ByteBuffer;
+import mmcorej.org.json.JSONObject;
+
 /**
  * Width, height, pixel type etc.
  */
@@ -14,4 +17,5 @@ public class EssentialImageMetadata {
         bitDepth = bd;
         rgb = isRGB;
     }
+
 }
