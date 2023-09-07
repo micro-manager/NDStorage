@@ -83,7 +83,7 @@ public class IndexEntryData {
    public String toString() {
       // convert bytebuffer to string
       Buffer b = this.asByteBuffer();
-      return StandardCharsets.UTF_8.decode((ByteBuffer) b).toString();
+      return new String(((ByteBuffer)b).array(), StandardCharsets.ISO_8859_1);
    }
 
    public boolean isDataSetFinishedEntry() {
