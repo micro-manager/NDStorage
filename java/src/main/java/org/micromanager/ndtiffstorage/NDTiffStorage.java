@@ -997,8 +997,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    @Override
    public TaggedImage getImage(HashMap<String, Object> axes, int dsIndex) {
       //return a single tile from the full res image
-      if (fullResStorage_ == null || lowResStorages_ == null ||
-              (!lowResStorages_.containsKey(dsIndex) && dsIndex != 0) ){
+      if (fullResStorage_ == null || (tiled_ && lowResStorages_ == null) ||
+              (tiled_ && !lowResStorages_.containsKey(dsIndex) && dsIndex != 0) ){
          return null;
       }
       if (dsIndex == 0) {
