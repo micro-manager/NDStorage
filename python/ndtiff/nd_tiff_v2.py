@@ -496,8 +496,8 @@ class NDTiff_v2_0():
         """
         if stitched and "GridPixelOverlapX" not in self.summary_metadata:
             raise Exception('This is not a stitchable dataset')
-        w = self.image_width if not stitched else self._tile_width
-        h = self.image_height if not stitched else self._tile_height
+        w = self.image_width if not stitched else self._tile_width*len(self.axes["column"])
+        h = self.image_height if not stitched else self._tile_height*len(self.axes["row"])
         self._empty_tile = (
             np.zeros((h, w), self.dtype)
             if self.bytes_per_pixel != 3
@@ -566,7 +566,7 @@ class NDTiff_v2_0():
             return image
 
         chunks = tuple([(1,) * len(axes_to_stack[axis]) for axis in axes_to_stack.keys()])
-        chunks += (w, h)
+        chunks += (h, w)
         if rgb:
             chunks += (3,)
 
