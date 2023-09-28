@@ -25,6 +25,22 @@ The NDTiff library is optimized for size, speed, and flexibility. Several optimi
 
 **Flexibility**. NDTiff does not assume any particular model of the dataset, aside from the fact that it can be broken into multiple 2D images. Each 2D image is indexed by a position along one or more axes (e.g. `{'time': 1, 'channel': 2}`). The choice of number of axes is arbitrary and up to the user. This means the format can equally well store many modalities that use multiple images including 3D data, time series, hyperspectral data, high-dynamic range, etc.
 
+## Support for Cloud-based IO
+The python `ndtiff` package supports IO to cloud services (i.e. AWS s3) via thr `file_io` submodule.
+you will need to provide your own file interface methods (or use those from other packages i.e. `boto3`), in the following way:
+```
+from _your_custom_storage_module_ import storage
+import ndtiff
+
+file_io = ndtiff.file_io.NDTiffFileIO(open_function=storage.open,
+                                      listdir_function=storage.listdir,
+                                      path_join_function=storage.pathjoin, 
+                                      isdir_function=storage.isdir)
+
+dset = ndtiff.Dataset("s3://bucket_name/path/to/your/dataset", file_io=file_io)
+```
+
+
 
 ## Multi-resolution pyramids
 An additional feature of this library is the use [multi-resolution pyramids](https://en.wikipedia.org/wiki/Pyramid_%28image_processing%29). Having the data in this form is very useful for image processing and visualization of extremely large images, because the data can be visualized/analyzed at multiple scales without having to pull the entire, full-resolution image into memory. This is implemented by using multiple parallel NDTiffStorage datasets, each of which corresponds to one resolution level. It assumes multiple images are laid out in regular an XY grid, and downsamples along these X and Y dimensions.
@@ -201,18 +217,4 @@ A listing of all the images contained in the file and their byte offsets. This a
 Image display settings (channel contrast and colors). The first 4 bytes of this block contain the Display Settings Header (347834724 = 0x14BB8964), and the next 4 contain the number of subsequent bytes reserved for display settings. A UTF-8 JSON string containing display settings is written.
 
 
-## Support for Cloud-based IO
-The python `ndtiff` package supports IO to cloud services (i.e. AWS s3) via thr `file_io` submodule.
-you will need to provide your own file interface methods (or use those from other packages i.e. `boto3`), in the following way:
-```
-from _your_custom_storage_module_ import storage
-import ndtiff
-
-file_io = ndtiff.file_io.NDTiffFileIO(open_function=storage.open,
-                                      listdir_function=storage.listdir,
-                                      path_join_function=storage.pathjoin, 
-                                      isdir_function=storage.isdir)
-
-dset = ndtiff.Dataset("s3://bucket_name/path/to/your/dataset", file_io=file_io)
-```
 
