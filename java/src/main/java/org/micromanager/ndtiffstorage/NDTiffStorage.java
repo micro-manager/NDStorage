@@ -14,6 +14,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
+
 package org.micromanager.ndtiffstorage;
 
 import java.awt.Point;
@@ -25,17 +26,30 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.swing.JOptionPane;
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
 
-import javax.swing.*;
 
 /**
  * This class manages pyramidal multipage Tiff datasets, averaging multiple 2x2
@@ -57,25 +71,31 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private static final String FULL_RES_SUFFIX = "Full resolution";
    private static final String DOWNSAMPLE_SUFFIX = "Downsampled_x";
    private ResolutionLevel fullResStorage_;
-   private final TreeMap<Integer, ResolutionLevel> lowResStorages_; //map of resolution index to storage instance
-   private String directory_;
+   //map of resolution index to storage instance
+   private final TreeMap<Integer, ResolutionLevel> lowResStorages_;
+   private final String directory_;
    private final JSONObject summaryMD_;
    private JSONObject displaySettings_;
-   private int xOverlap_, yOverlap_;
-   private int fullResTileWidthIncludingOverlap_ = -1, fullResTileHeightIncludingOverlap_ = -1;
-   private int tileWidth_ = -1, tileHeight_ = -1; //Indpendent of zoom level because tile sizes stay the same--which means overlap is cut off
+   private int xOverlap_;
+   private int yOverlap_;
+   private int fullResTileWidthIncludingOverlap_ = -1;
+   private int fullResTileHeightIncludingOverlap_ = -1;
+   // Independent of zoom level because tile sizes stay the same--which means overlap is cut off
+   private int tileWidth_ = -1;
+   private int tileHeight_ = -1;
    private volatile boolean finished_;
    private String uniqueAcqName_;
    private ExecutorService writingExecutor_;
    private volatile int maxResolutionLevel_ = 0;
-   private boolean loaded_, tiled_;
+   private final boolean loaded_;
+   private boolean tiled_;
    //this is how to create a concurrent set
-   private Set<HashMap<String, Object>> imageAxes_ = new ConcurrentHashMap<HashMap<String, Object>, Boolean>().newKeySet();
-   private final Integer externalMaxResLevel_;
+   private final Set<HashMap<String, Object>> imageAxes_ =
+           new ConcurrentHashMap<HashMap<String, Object>, Boolean>().newKeySet();
    private String prefix_;
    Consumer<String> debugLogger_ = null;
    private LinkedBlockingQueue<Callable<IndexEntryData>> writingTaskQueue_;
-   private HashMap<String, Class> axisTypes_ = new HashMap<String, Class>();
+   private final HashMap<String, Class> axisTypes_ = new HashMap<>();
 
    private boolean firstImageAdded_ = false;
    private static final int BUFFER_DIRECT_THRESHOLD = 8192;
@@ -88,10 +108,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    /**
     * Constructor to load existing storage from disk dir --top level saving
-    * directory
+    * directory.
     */
    public NDTiffStorage(String dir) throws IOException {
-      externalMaxResLevel_ = null;
       loaded_ = true;
       directory_ = dir;
       finished_ = true;
@@ -100,7 +119,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
       dir += (dir.endsWith(File.separator) ? "" : File.separator);
       // Differentiate between NDTiff v2 and v3 here.
-      if (dir.endsWith(FULL_RES_SUFFIX + File.separator) ) {
+      if (dir.endsWith(FULL_RES_SUFFIX + File.separator)) {
          // The wrong one was selected
          dir = new File(dir).getParent() + File.separator;
       }
@@ -125,17 +144,20 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
 
       try {
-         String path = dir + (dir.endsWith(File.separator) ? "" : File.separator) + "display_settings.txt";
+         String path = dir + (dir.endsWith(File.separator) ? "" : File.separator)
+                 + "display_settings.txt";
          byte[] data = Files.readAllBytes(Paths.get(path));
          displaySettings_ = new JSONObject(new String(data));
       } catch (Exception e) {
          System.err.println("Couldn't read displaysettings");
       }
 
-      imageAxes_.addAll(fullResStorage_.imageKeys().stream().map(s -> IndexEntryData.deserializeAxes(s))
+      imageAxes_.addAll(fullResStorage_.imageKeys().stream()
+              .map(s -> IndexEntryData.deserializeAxes(s))
               .collect(Collectors.toSet()));
 
-      //read width from the first image, to allow for datasets with different widths/heights per image
+      // Read width from the first image, to allow for datasets with
+      // different widths/heights per image
       // Even though this won't be allowed for tiled datasets
       fullResTileHeightIncludingOverlap_ = fullResStorage_.getFirstImageHeight();
       fullResTileWidthIncludingOverlap_ = fullResStorage_.getFirstImageWidth();
@@ -171,7 +193,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                         int overlapX, int overlapY, boolean tiled,
                         Integer externalMaxResLevel, int savingQueueSize,
                         Consumer<String> debugLogger, boolean createDir) {
-      externalMaxResLevel_ = externalMaxResLevel;
       tiled_ = tiled;
       xOverlap_ = overlapX;
       yOverlap_ = overlapY;
@@ -313,7 +334,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    private int getNumRows() {
-      if (imageAxes_ == null || imageAxes_.size() == 0) {
+      if (imageAxes_.isEmpty()) {
          return 1;
       }
       int maxRow = imageAxes_.stream().mapToInt(value -> (Integer) value.get(ROW_AXIS)).max().getAsInt();
@@ -322,7 +343,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    private int getNumCols() {
-      if (imageAxes_ == null || imageAxes_.size() == 0) {
+      if (imageAxes_.isEmpty()) {
          return 1;
       }
       int maxCol = imageAxes_.stream().mapToInt(value -> (Integer) value.get(COL_AXIS)).max().getAsInt();
@@ -491,8 +512,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    /**
-    * Down-samples previousLevelPix into currentLevelPix,  averaging 2x2 squares of pixels to create the
-    * down-sampled image.
+    * Down-samples previousLevelPix into currentLevelPix, averaging 2x2 squares
+    * of pixels to create the down-sampled image.
     *
     * @param currentLevelPix pixels at current resolution level
     * @param previousLevelPix pixels at previous resolution level
@@ -506,8 +527,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                            boolean rgb) {
       int byteDepth = currentLevelPix instanceof byte[] ? 1 : 2;
       //Determine which position in 2x2 this tile sits in
-      int xPos = (int) Math.abs(previousLevelCol % 2);
-      int yPos = (int) Math.abs(previousLevelRow % 2);
+      int xPos = Math.abs(previousLevelCol % 2);
+      int yPos = Math.abs(previousLevelRow % 2);
       //Add one if top or left so border pixels from an odd length image gets added in
       for (int x = 0; x < tileWidth_; x += 2) { //iterate over previous res level pixels
          for (int y = 0; y < tileHeight_; y += 2) {
@@ -531,26 +552,31 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                previousLevelHeight = tileHeight_;
 
             }
-            int rgbMultiplier_ = rgb ? 4 : 1;
+            int rgbMultiplier = rgb ? 4 : 1;
             for (int compIndex = 0; compIndex < (rgb ? 4 : 1); compIndex++) {
-               int count = 1; //count is number of pixels (out of 4) used to create a pixel at this level
+               //count is number of pixels (out of 4) used to create a pixel at this level
+               int count = 1;
                //always take top left pixel, maybe take others depending on whether at image edge
                int sum = 0;
                if (rgb) {
-                  sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff;
+                  sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)
+                          * rgbMultiplier + compIndex] & 0xff;
                } else if (byteDepth == 1) {
                   sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)] & 0xff;
                } else {
-                  sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)] & 0xffff;
+                  sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX)]
+                          & 0xffff;
                }
 
-               //pixel index can be different from index in tile at resolution level 0 if there is nonzero overlap
-               if (x < previousLevelWidth - 1 && y < previousLevelHeight - 1) { //if not bottom right corner, add three more pix
+               // pixel index can be different from index in tile at resolution level 0
+               // if there is nonzero overlap.
+               if (x < previousLevelWidth - 1 && y < previousLevelHeight - 1) {
+                  //if not bottom right corner, add three more pix
                   count += 3;
                   if (rgb) {
-                     sum += (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff)
-                             + (((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff)
-                             + (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff);
+                     sum += (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1) * rgbMultiplier + compIndex] & 0xff)
+                             + (((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier + compIndex] & 0xff)
+                             + (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier + compIndex] & 0xff);
                   } else if (byteDepth == 1) {
                      sum += (((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX + 1)  ] & 0xff)
                              + (((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xff)
@@ -563,8 +589,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                } else if (x < previousLevelWidth - 1) { //if not right edge, add one more pix
                   count++;
                   if (rgb) {
-                     sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier_ + compIndex] & 0xff;
-                  } else if (byteDepth == 1 ) {
+                     sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1) * rgbMultiplier + compIndex] & 0xff;
+                  } else if (byteDepth == 1) {
                      sum += ((byte[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xff;
                   } else {
                      sum += ((short[]) previousLevelPix)[(pixelY * previousLevelWidth + pixelX + 1)  ] & 0xffff;
@@ -572,8 +598,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                } else if (y < previousLevelHeight - 1) { // if not bottom edge, add one more pix
                   count++;
                   if (rgb) {
-                     sum += ((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier_ + compIndex] & 0xff;
-                  } else if (byteDepth == 1 ) {
+                     sum += ((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) * rgbMultiplier + compIndex] & 0xff;
+                  } else if (byteDepth == 1) {
                      sum += ((byte[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) ] & 0xff;
                   } else {
                      sum += ((short[]) previousLevelPix)[((pixelY + 1) * previousLevelWidth + pixelX) ] & 0xffff;
@@ -585,11 +611,14 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                //if full res tile has an odd number of pix, the last one gets chopped off
                //to make it fit into tile containers
                try {
-                  int index = (((y + yPos * tileHeight_) / 2) * tileWidth_ + (x + xPos * tileWidth_) / 2)
-                          * (rgb ? rgbMultiplier_ : 1) + compIndex;
+                  int index = (((y + yPos * tileHeight_) / 2) * tileWidth_
+                          + (x + xPos * tileWidth_) / 2) * (rgb ? rgbMultiplier : 1)
+                          + compIndex;
                   if (byteDepth == 1 || rgb) {
+                     // this looks suspicious....
                      ((byte[]) currentLevelPix)[index] = (byte) Math.round(sum / count);
                   } else {
+                     // this looks suspicious....
                      ((short[]) currentLevelPix)[index] = (short) Math.round(sum / count);
                   }
                } catch (Exception e) {
@@ -613,7 +642,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          ResolutionLevel previousLevelStorage
                  = resolutionIndex == 1 ? fullResStorage_ : lowResStorages_.get(resolutionIndex - 1);
          Set<String> imageKeys = previousLevelStorage.imageKeys();
-         System.out.println("Increasing resolution index: " + resolutionIndex + " Keys: " + imageKeys);
          for (String key : imageKeys) {
             HashMap<String, Object> axes = IndexEntryData.deserializeAxes(key);
             int previousResCol = (Integer) axes.get(COL_AXIS);
@@ -720,7 +748,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
                // while waiting for being written to disk
                JSONObject tags = new JSONObject(img.tags.toString());
                // modify tags to reflect image size, and correct position index
-               IndexEntryData ied = lowResStorages_.get(resolutionIndex).putImage(
+               lowResStorages_.get(resolutionIndex).putImage(
                        indexKey, currentLevelPix, tags.toString().getBytes(),
                        rgb, tileHeight_, tileWidth_, bitDepth);
             } else {
@@ -758,7 +786,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    /**
-    * Throw an exception if there was an error writing to disk
+    * Throws an exception if there was an error writing to disk.
     */
    public void checkForWritingException() throws Exception {
       if (writingException_ != null) {
@@ -767,17 +795,18 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    /**
-    * This version works for regular, non-multiresolution data
+    * This version works for regular, non-multiresolution data.
     *
     */
-   public Future<IndexEntryData> putImage(Object pixels, JSONObject metadata, HashMap<String, Object> axessss,
-                        boolean rgb, int bitDepth, int imageHeight, int imageWidth) {
+   public Future<IndexEntryData> putImage(Object pixels, JSONObject metadata,
+                                          HashMap<String, Object> axessss, boolean rgb,
+                                          int bitDepth, int imageHeight, int imageWidth) {
       try {
          checkForWritingException();
       } catch (Exception e) {
          throw new RuntimeException(e);
       }
-      TaggedImage ti = new TaggedImage(pixels, metadata);
+      final TaggedImage ti = new TaggedImage(pixels, metadata);
 
       // Make sure each axis takes all integer or all string values
       for (String axisName : axessss.keySet()) {
@@ -800,8 +829,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
       if (debugLogger_ != null) {
          debugLogger_.accept(
-                 "Adding image " + getAxesString(axessss) +
-                 "\nwriting_queue_size= " + writingTaskQueue_.size());
+                 "Adding image " + getAxesString(axessss)
+                         + "\nwriting_queue_size= " + writingTaskQueue_.size());
       }
       // serialize metadata before adding to writing thread to speed performance
       byte[] metadataBytes = metadata.toString().getBytes(StandardCharsets.UTF_8);
@@ -809,47 +838,47 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       fullResStorage_.addToWritePendingImages(indexKey, ti,
               new EssentialImageMetadata(imageWidth, imageHeight, bitDepth, rgb));
 
-   //Submit writing task on a dedicated thread
-   return blockingWritingTaskHandoff(new Callable<IndexEntryData>() {
-      @Override
-      public IndexEntryData call() {
-         try {
-            //Make a local copy
-            HashMap<String, Object> axes = new HashMap<String, Object>(axessss);
-            imageAxes_.add(axes);
+      //Submit writing task on a dedicated thread
+      return blockingWritingTaskHandoff(new Callable<IndexEntryData>() {
+         @Override
+         public IndexEntryData call() {
+            try {
+               //Make a local copy
+               HashMap<String, Object> axes = new HashMap<>(axessss);
+               imageAxes_.add(axes);
 
-            if (debugLogger_ != null) {
-               debugLogger_.accept("putting image in storage");
+               if (debugLogger_ != null) {
+                  debugLogger_.accept("putting image in storage");
+               }
+               //write to full res storage as normal (i.e. with overlap pixels present)
+               IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadataBytes,
+                       rgb, imageHeight, imageWidth, bitDepth);
+               return ied;
+            } catch (Exception ex) {
+               writingException_ = ex;
+               return null;
             }
-            //write to full res storage as normal (i.e. with overlap pixels present)
-            IndexEntryData ied = fullResStorage_.putImage(indexKey, pixels, metadataBytes,
-                    rgb, imageHeight, imageWidth, bitDepth);
-            return ied;
-         } catch (Exception ex) {
-            writingException_ = ex;
-            return null;
          }
-      }
-   });
+      });
    }
 
    static String getAxesString(HashMap<String, Object> axes) {
-      String s = "";
+      StringBuilder s = new StringBuilder();
       for (String key : axes.keySet()) {
-         s += key + "  " + axes.get(key) + ",  ";
+         s.append(key).append("  ").append(axes.get(key)).append(",  ");
       }
-      return s;
+      return s.toString();
    }
 
    /**
     * This version is called by programs doing dynamic stitching (i.e.
-    * micro-magellan). axes must contain "position" mapping to a desired position index
+    * micro-magellan). Axes must contain "position" mapping to a desired position index
     *
     * @return
     */
    @Override
-   public Future putImageMultiRes( Object pixels, JSONObject metadata, final HashMap<String, Object> axes,
-                                  boolean rgb, int bitDepth, int imageHeight, int imageWidth) {
+   public Future<IndexEntryData> putImageMultiRes(Object pixels, JSONObject metadata, final HashMap<String,
+           Object> axes, boolean rgb, int bitDepth, int imageHeight, int imageWidth) {
       try {
          checkForWritingException();
       } catch (Exception e) {
@@ -857,8 +886,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
       TaggedImage ti = new TaggedImage(pixels, metadata);
       if (!firstImageAdded_) {
-         //technically this doesnt need to be parsed here, because it should be fixed for the whole
-         //dataset, NOT interpretted at runtime, but whatever
+         // Technically this doesn't need to be parsed here, because it should be fixed
+         // for the whole dataset, NOT interpretted at runtime, but whatever
          firstImageAdded_ = true;
          fullResTileWidthIncludingOverlap_ = imageWidth;
          fullResTileHeightIncludingOverlap_ = imageHeight;
@@ -886,11 +915,6 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
             if (tiled_) {
                //check if maximum resolution level needs to be updated based on full size of image
-               //long fullResPixelWidth = getNumCols() * tileWidth_;
-               //long fullResPixelHeight = getNumRows() * tileHeight_;
-               //int maxResIndex = externalMaxResLevel_ != null ? externalMaxResLevel_ :
-               //        (int) Math.ceil(Math.log((Math.max(fullResPixelWidth, fullResPixelHeight)
-               //                / 4)) / Math.log(2));
                int row = (Integer) axes.get(ROW_AXIS);
                int col = (Integer) axes.get(COL_AXIS);
                // addResolutionsUpTo(maxResIndex);
@@ -964,8 +988,8 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    @Override
    public TaggedImage getImage(HashMap<String, Object> axes, int dsIndex) {
       //return a single tile from the full res image
-      if (fullResStorage_ == null || (tiled_ && lowResStorages_ == null) ||
-              (tiled_ && !lowResStorages_.containsKey(dsIndex) && dsIndex != 0) ){
+      if (fullResStorage_ == null || (tiled_ && lowResStorages_ == null)
+              || (tiled_ && !lowResStorages_.containsKey(dsIndex) && dsIndex != 0)) {
          return null;
       }
       if (dsIndex == 0) {
@@ -996,7 +1020,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    /**
-    * Signal to finish writing and block until everything pending is done
+    * Signal to finish writing and block until everything pending is done.
     */
    public void finishedWriting()  {
       if (loaded_) {
@@ -1088,12 +1112,12 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    public void close() {
       //run close on a new thread
-        new Thread(new Runnable() {
-             @Override
-             public void run() {
-                doClose();
-             }
-        }).start();
+      new Thread(new Runnable() {
+         @Override
+         public void run() {
+            doClose();
+         }
+      }).start();
    }
 
    private void doClose() {
@@ -1102,7 +1126,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       if (!loaded_) {
          while (true) {
             try {
-               if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) break;
+               if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) {
+                  break;
+               }
             } catch (InterruptedException e) {
                throw new RuntimeException(e);
             }
@@ -1139,6 +1165,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    private static int getCurrentMaxDirIndex(File rootDir, String prefix) throws NumberFormatException {
       int maxNumber = 0;
+      if (rootDir == null) {
+         return maxNumber;
+      }
       int number;
       String theName;
       for (File acqDir : rootDir.listFiles()) {
@@ -1167,20 +1196,17 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * added at this slice index
     */
    public Set<Point> getTileIndicesWithDataAt(String name, int sliceIndex) {
-      Set<Point> exploredTiles = new TreeSet<Point>(new Comparator<Point>() {
-         @Override
-         public int compare(Point o1, Point o2) {
-            if (o1.x != o2.x) {
-               return o1.x - o2.x;
-            } else if (o1.y != o2.y) {
-               return o1.y - o2.y;
-            }
-            return 0;
+      Set<Point> exploredTiles = new TreeSet<>((o1, o2) -> {
+         if (o1.x != o2.x) {
+            return o1.x - o2.x;
+         } else if (o1.y != o2.y) {
+            return o1.y - o2.y;
          }
+         return 0;
       });
       for (HashMap<String, Object> s : imageAxes_) {
          if ((Integer) s.get(name) == sliceIndex) {
-            exploredTiles.add(new Point( (Integer) s.get(COL_AXIS), (Integer) s.get(ROW_AXIS)));
+            exploredTiles.add(new Point((Integer) s.get(COL_AXIS), (Integer) s.get(ROW_AXIS)));
          }
 
       }
@@ -1193,14 +1219,14 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    private long getMinRow() {
-      if (imageAxes_ == null || imageAxes_.size() == 0) {
+      if (imageAxes_.isEmpty()) {
          return 0;
       }
       return imageAxes_.stream().mapToInt(value -> (Integer) value.get(ROW_AXIS)).min().getAsInt();
    }
 
    private long getMinCol() {
-      if (imageAxes_ == null || imageAxes_.size() == 0) {
+      if (imageAxes_.isEmpty()) {
          return 0;
       }
       return imageAxes_.stream().mapToInt(value -> (Integer) value.get(COL_AXIS)).min().getAsInt();
@@ -1226,12 +1252,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
 
    private static Buffer allocateByteBuffer(int capacity) {
-//      Buffer b = capacity >= BUFFER_DIRECT_THRESHOLD ?
-//              ByteBuffer.allocateDirect(capacity) :
-//              ByteBuffer.allocate(capacity);
-      Buffer b =  ByteBuffer.allocateDirect(capacity);
-      b = ((ByteBuffer) b).order(BYTE_ORDER);
-      return b;
+      return ByteBuffer.allocateDirect(capacity).order(BYTE_ORDER);
    }
 
    Buffer getSmallBuffer(int capacity) {
@@ -1243,8 +1264,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          return allocateByteBuffer(capacity);
       }
       if (BUFFER_POOL_SIZE == 0) {
-         Buffer b =  allocateByteBuffer(capacity);
-         return b;
+         return allocateByteBuffer(capacity);
       }
 
       if (!pooledBuffers_.containsKey(capacity)) {
@@ -1252,11 +1272,11 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       }
 
       // Recycle in LIFO order (smaller images may still be in L3 cache)
-      Buffer b = pooledBuffers_.get(capacity).pollFirst();
+      ByteBuffer b = pooledBuffers_.get(capacity).pollFirst();
 
       if (b != null) {
          // Ensure correct byte order in case recycled from other source
-         ((ByteBuffer)b).order(BYTE_ORDER);
+         b.order(BYTE_ORDER);
          //You can't chain the previous and following calls together or you get a weird java error
          b.clear();
          return b;
