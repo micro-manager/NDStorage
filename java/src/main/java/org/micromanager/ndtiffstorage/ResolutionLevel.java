@@ -21,8 +21,6 @@
 //
 package org.micromanager.ndtiffstorage;
 
-import java.awt.*;
-import java.awt.geom.Rectangle2D;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
