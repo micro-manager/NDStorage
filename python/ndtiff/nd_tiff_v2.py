@@ -575,7 +575,6 @@ class NDTiff_v2_0():
         chunks += (block_h, block_w)
         if rgb:
             chunks += (3,)
-        print(chunks)
 
         array = da.map_blocks(
             read_one_image,
