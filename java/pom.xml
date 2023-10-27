@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.micro-manager.ndtiffstorage</groupId>
     <artifactId>NDTiffStorage</artifactId>
-    <version>2.15.2</version>
+    <version>2.15.3</version>
     <packaging>jar</packaging>
     <name>NDTiff Storage file format</name>
     <description>Java-based writer and reader used for NDTiffStorage format</description>
