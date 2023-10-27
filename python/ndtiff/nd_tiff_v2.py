@@ -496,8 +496,8 @@ class NDTiff_v2_0():
         """
         if stitched and "GridPixelOverlapX" not in self.summary_metadata:
             raise Exception('This is not a stitchable dataset')
-        w = self.image_width if not stitched else self._tile_width
-        h = self.image_height if not stitched else self._tile_height
+        w = self.image_width
+        h = self.image_height
         self._empty_tile = (
             np.zeros((h, w), self.dtype)
             if self.bytes_per_pixel != 3
@@ -536,15 +536,15 @@ class NDTiff_v2_0():
                     for column in column_values:
                         #remove overlap between tiles
                         if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
-                            blocks[-1].append(self._empty_tile)
+                            tile = self._empty_tile
                         else:
                             tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
-                            if self.half_overlap[0] != 0:
-                                tile = tile[
-                                    self.half_overlap[0] : -self.half_overlap[0],
-                                    self.half_overlap[1] : -self.half_overlap[1],
-                                ]
-                            blocks[-1].append(tile)
+                        if self.half_overlap[0] != 0:
+                            tile = tile[
+                                self.half_overlap[0] : -self.half_overlap[0],
+                                self.half_overlap[1] : -self.half_overlap[1],
+                            ]
+                        blocks[-1].append(tile)
 
                 if rgb:
                     image = np.concatenate(
@@ -566,7 +566,13 @@ class NDTiff_v2_0():
             return image
 
         chunks = tuple([(1,) * len(axes_to_stack[axis]) for axis in axes_to_stack.keys()])
-        chunks += (w, h)
+        if stitched:
+            block_w = self._tile_width*len(self.axes["column"])
+            block_h = self._tile_height*len(self.axes["row"])
+        else:
+            block_w = w
+            block_h = h
+        chunks += (block_h, block_w)
         if rgb:
             chunks += (3,)
 
