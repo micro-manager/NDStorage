@@ -115,6 +115,14 @@ public interface NDTiffAPI {
    public TaggedImage getImage(HashMap<String, Object> axes);
 
    /**
+    * Get the metadata for a single image
+    *
+    * @param axes
+    * @return
+    */
+   public JSONObject getImageMetadata(HashMap<String, Object> axes);
+
+   /**
     * Get a sub-image of the image with the specified axes
     *
     */

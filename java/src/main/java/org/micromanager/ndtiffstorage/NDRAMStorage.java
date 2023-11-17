@@ -109,6 +109,11 @@ public class NDRAMStorage implements NDTiffAPI {
    }
 
    @Override
+   public JSONObject getImageMetadata(HashMap<String, Object> axes) {
+      return metadata_.get(axes);
+   }
+
+   @Override
    public TaggedImage getSubImage(HashMap<String, Object> axes, int xOffset, int yOffset, int width,
                                   int height) {
       TaggedImage ti = getImage(axes);
