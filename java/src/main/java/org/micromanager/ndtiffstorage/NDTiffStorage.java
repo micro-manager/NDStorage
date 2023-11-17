@@ -944,6 +944,14 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    }
 
    @Override
+   public JSONObject getImageMetadata(HashMap<String, Object> axes) {
+      if (fullResStorage_ == null) {
+         return null;
+      }
+      return fullResStorage_.getImageTags(IndexEntryData.serializeAxes(axes));
+   }
+
+   @Override
    public TaggedImage getSubImage(HashMap<String, Object> axes, int xOffset, int yOffset, int width,
                                   int height) {
       return getDisplayImage(axes, 0, xOffset, yOffset, width, height);
