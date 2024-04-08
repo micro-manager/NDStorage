@@ -252,7 +252,7 @@ class NDTiffDataset():
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-    
+
     def get_channel_names(self):
         """
         :return: list of channel names (strings)
@@ -567,7 +567,11 @@ class NDTiffDataset():
         entries[frozenset(axes.items())] = index_entry
         return position, axes, index_entry
 
+    #TODO: make private
     def read_index(self, path):
+        """
+        Do not use directly -- this function will be made private in the future
+        """
         print("\rReading index...          ", end="")
         with self.file_io.open(path + "NDTiff.index", "rb") as index_file:
             data = index_file.read()
