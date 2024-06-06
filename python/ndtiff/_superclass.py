@@ -1,7 +1,8 @@
 import os
-from ndtiff.ndtiff_file import NDTiffDataset, NDTiffPyramidDataset
-from ndtiff.nd_tiff_v2 import NDTiff_v2_0
-from ndtiff.ndtiff_v1 import NDTiff_v1
+from ndtiff.ndtiff_dataset import NDTiffDataset
+from ndtiff.ndtiff_pyramid_dataset import NDTiffPyramidDataset
+from ndtiff.old_format_version_readers.nd_tiff_v2 import NDTiff_v2_0
+from ndtiff.old_format_version_readers.ndtiff_v1 import NDTiff_v1
 import numpy as np
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 

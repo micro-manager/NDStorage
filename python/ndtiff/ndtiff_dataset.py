@@ -10,6 +10,7 @@ from functools import partial
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 from ndtiff.ndtiff_file import _SingleNDTiffReader
 from ndtiff.ndtiff_file import _POSITION_AXIS, _ROW_AXIS, _COLUMN_AXIS, _Z_AXIS, _TIME_AXIS, _CHANNEL_AXIS, _AXIS_ORDER, _get_axis_order_key
+from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
 class NDTiffDataset:
     """
@@ -50,7 +51,11 @@ class NDTiffDataset:
 
         self.path = dataset_path
         self.path += "" if self.path[-1] == os.sep else os.sep
-        self.index = self.read_index(self.path)
+        print("\rReading index...          ", end="")
+        with self.file_io.open(self.path + "NDTiff.index", "rb") as index_file:
+            data = index_file.read()
+            self.index = read_ndtiff_index(data)
+
         tiff_names = [
             self.file_io.path_join(self.path, tiff) for tiff in self.file_io.listdir(self.path) if tiff.endswith(".tif")
         ]
@@ -275,7 +280,8 @@ class NDTiffDataset:
         written by java side
         """
         with self._lock:
-            _, axes, index_entry = self._read_single_index_entry(data, self.index)
+            _, axes, index_entry = self.read_single_index_entry(data)
+            self.index[frozenset(axes.items())] = index_entry
 
             if index_entry["filename"] not in self._readers_by_filename:
                 new_reader = _SingleNDTiffReader(self.path + index_entry["filename"], file_io=self.file_io)
@@ -401,63 +407,6 @@ class NDTiffDataset:
     def _does_have_image(self, axes):
         key = frozenset(axes.items())
         return key in self.index
-
-    def _read_single_index_entry(self, data, entries, position=0):
-        index_entry = {}
-        (axes_length,) = struct.unpack("I", data[position : position + 4])
-        if axes_length == 0:
-            warnings.warn(
-                "Index appears to not have been properly terminated (the dataset may still work)"
-            )
-            return None
-        axes_str = data[position + 4 : position + 4 + axes_length].decode("utf-8")
-        axes = json.loads(axes_str)
-        position += axes_length + 4
-        (filename_length,) = struct.unpack("I", data[position : position + 4])
-        index_entry["filename"] = data[position + 4 : position + 4 + filename_length].decode(
-            "utf-8"
-        )
-        position += 4 + filename_length
-        (
-            index_entry["pixel_offset"],
-            index_entry["image_width"],
-            index_entry["image_height"],
-            index_entry["pixel_type"],
-            index_entry["pixel_compression"],
-            index_entry["metadata_offset"],
-            index_entry["metadata_length"],
-            index_entry["metadata_compression"],
-        ) = struct.unpack("IIIIIIII", data[position : position + 32])
-        position += 32
-        entries[frozenset(axes.items())] = index_entry
-        return position, axes, index_entry
-
-    #TODO: make private
-    def read_index(self, path):
-        """
-        Do not use directly -- this function will be made private in the future
-        """
-        print("\rReading index...          ", end="")
-        with self.file_io.open(path + "NDTiff.index", "rb") as index_file:
-            data = index_file.read()
-        entries = {}
-        position = 0
-        while position < len(data):
-            print(
-                "\rReading index... {:.1f}%       ".format(
-                    100 * (1 - (len(data) - position) / len(data))
-                ),
-                end="",
-            )
-            entry = self._read_single_index_entry(data, entries, position)
-            if entry is None:
-                break
-            position, axes, index_entry = entry
-            if position is None:
-                break
-
-        print("\rFinshed reading index          ", end="")
-        return entries
 
     def _do_read_image(
         self,
