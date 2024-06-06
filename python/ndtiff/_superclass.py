@@ -11,16 +11,16 @@ class Dataset:
     Generic class for opening NDTiff datasets. Creating an instance of this class will
     automatically return an instance of the class appropriate to the version and type of NDTiff dataset required
     """
-    def __new__(cls, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, _summary_metadata=None):
+    def __new__(cls, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None):
         ## Datasets currently being collected--must be v3
-        if _summary_metadata is not None:
+        if summary_metadata is not None:
             # Check if its a multi-res pyramid or regular
-            if "GridPixelOverlapX" in _summary_metadata:
+            if "GridPixelOverlapX" in summary_metadata:
                 obj = NDTiffPyramidDataset.__new__(NDTiffPyramidDataset)
-                obj.__init__(dataset_path=dataset_path, file_io=file_io, _summary_metadata=_summary_metadata)
+                obj.__init__(dataset_path=dataset_path, file_io=file_io, summary_metadata=summary_metadata)
             else:
                 obj = NDTiffDataset.__new__(NDTiffDataset)
-                obj.__init__( dataset_path=dataset_path, file_io=file_io, _summary_metadata=_summary_metadata)
+                obj.__init__( dataset_path=dataset_path, file_io=file_io, summary_metadata=summary_metadata)
             return obj
 
         # Search for Full resolution dir, check for index

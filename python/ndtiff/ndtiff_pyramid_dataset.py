@@ -329,9 +329,13 @@ class NDTiffPyramidDataset:
                     column=column,
                     **kwargs)
 
+    # for backwards compatibility in case of older pycromanager version, can be removed in the future
     def _add_index_entry(self, index_entry):
+        self.add_index_entry(index_entry)
+
+    def add_index_entry(self, index_entry):
         # Pass through to full res data
-        return self.res_levels[0]._add_index_entry(index_entry)
+        return self.res_levels[0].add_index_entry(index_entry)
 
     def close(self):
         with self._lock:

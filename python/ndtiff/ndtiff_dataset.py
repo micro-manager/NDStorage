@@ -1,23 +1,24 @@
 import os
 import threading
-import json
-import struct
+import numpy as np
 import warnings
 import dask.array as da
 from sortedcontainers import SortedSet
 from functools import partial
 
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
-from ndtiff.ndtiff_file import _SingleNDTiffReader
+from ndtiff.ndtiff_file import SingleNDTiffReader
 from ndtiff.ndtiff_file import _POSITION_AXIS, _ROW_AXIS, _COLUMN_AXIS, _Z_AXIS, _TIME_AXIS, _CHANNEL_AXIS, _AXIS_ORDER, _get_axis_order_key
 from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
+
+from ndtiff.ndtiff_file import SingleNDTiffWriter
 
 class NDTiffDataset:
     """
     Class that opens a single NDTiff dataset
     """
 
-    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, _summary_metadata=None,  **kwargs):
+    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None, **kwargs):
         """
         Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
@@ -28,8 +29,8 @@ class NDTiffDataset:
             Abosolute path of top level folder of a dataset on disk
         file_io: ndtiff.file_io.NDTiffFileIO
             A container containing various methods for interacting with files.
-        _summary_metadata : dict
-            Summary metadata for a dataset that is currently being acquired. Users shouldn't call this
+        summary_metadata : dict
+            Summary metadata for a dataset being written to disk
         """
         self.file_io = file_io
         # if it is in fact a pyramid, the parent class will handle this. I think this implies that
@@ -37,85 +38,82 @@ class NDTiffDataset:
         # is tile overlap
         self._full_resolution = False
         self._lock = threading.RLock()
-        if _summary_metadata is not None:
+        if summary_metadata is not None:
             # this dataset is a view of an active acquisition. Image data is being written by code on the Java side
             self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
             self.axes = {}
             self.axes_types = {}
             self.index = {}
             self._readers_by_filename = {}
-            self._summary_metadata = _summary_metadata
+            self._summary_metadata = summary_metadata
             self.path = dataset_path
             self.path += "" if self.path[-1] == os.sep else os.sep
-            return
+            self.read_only = False
+            self.current_writer = None
+            self.file_index = 0
+        else:
+            self.read_only = True
+            self.path = dataset_path
+            self.path += "" if self.path[-1] == os.sep else os.sep
+            print("\rReading index...          ", end="")
+            with self.file_io.open(self.path + "NDTiff.index", "rb") as index_file:
+                data = index_file.read()
+                self.index = read_ndtiff_index(data)
 
-        self.path = dataset_path
-        self.path += "" if self.path[-1] == os.sep else os.sep
-        print("\rReading index...          ", end="")
-        with self.file_io.open(self.path + "NDTiff.index", "rb") as index_file:
-            data = index_file.read()
-            self.index = read_ndtiff_index(data)
+            tiff_names = [
+                self.file_io.path_join(self.path, tiff) for tiff in self.file_io.listdir(self.path) if tiff.endswith(".tif")
+            ]
+            self._readers_by_filename = {}
+            self.summary_metadata = {}
+            self.major_version, self.minor_version = (0, 0)
+            # Count how many files need to be opened
+            num_tiffs = 0
+            count = 0
+            for file in self.file_io.listdir(self.path):
+                if file.endswith(".tif"):
+                    num_tiffs += 1
+            # populate list of readers and tree mapping indices to readers
+            for tiff in tiff_names:
+                print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
+                count += 1
+                new_reader = SingleNDTiffReader(tiff, file_io=self.file_io)
+                self._readers_by_filename[tiff.split(os.sep)[-1]] = new_reader
+                # Should be the same on every file so resetting them is fine
+                self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
 
-        tiff_names = [
-            self.file_io.path_join(self.path, tiff) for tiff in self.file_io.listdir(self.path) if tiff.endswith(".tif")
-        ]
-        self._readers_by_filename = {}
-        self.summary_metadata = {}
-        self.major_version, self.minor_version = (0, 0)
-        # Count how many files need to be opened
-        num_tiffs = 0
-        count = 0
-        for file in self.file_io.listdir(self.path):
-            if file.endswith(".tif"):
-                num_tiffs += 1
-        # populate list of readers and tree mapping indices to readers
-        for tiff in tiff_names:
-            print("\rOpening file {} of {}...".format(count + 1, num_tiffs), end="")
-            count += 1
-            new_reader = _SingleNDTiffReader(tiff, file_io=self.file_io)
-            self._readers_by_filename[tiff.split(os.sep)[-1]] = new_reader
-            # Should be the same on every file so resetting them is fine
-            self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
+            if len(self._readers_by_filename) > 0:
+                self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
 
-        if len(self._readers_by_filename) > 0:
-            self.summary_metadata = list(self._readers_by_filename.values())[0].summary_md
+            self.overlap = (
+                np.array([self.summary_metadata["GridPixelOverlapY"], self.summary_metadata["GridPixelOverlapX"]])
+                if "GridPixelOverlapY" in self.summary_metadata else None)
 
+            self.axes = {}
+            self.axes_types = {}
+            for axes_combo in self.index.keys():
+                for axis, position in axes_combo:
+                    if axis not in self.axes.keys():
+                        self.axes[axis] = SortedSet()
+                        self.axes_types[axis] = type(position)
+                    self.axes[axis].add(position)
+            # Sort axes according to _AXIS_ORDER
+            self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
 
-        self.overlap = (
-            np.array([
-                    self.summary_metadata["GridPixelOverlapY"],
-                    self.summary_metadata["GridPixelOverlapX"],
-                ])
-            if "GridPixelOverlapY" in self.summary_metadata
-            else None
-        )
+            # figure out the mapping of channel name to position by reading image metadata
+            self._channels = {}
+            self._parse_string_axes()
 
-        self.axes = {}
-        self.axes_types = {}
-        for axes_combo in self.index.keys():
-            for axis, position in axes_combo:
-                if axis not in self.axes.keys():
-                    self.axes[axis] = SortedSet()
-                    self.axes_types[axis] = type(position)
-                self.axes[axis].add(position)
-        # Sort axes according to _AXIS_ORDER
-        self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
+            # get information about image width and height, assuming that they are consistent for whole dataset
+            # (which is not necessarily true but convenient when it is)
+            self.bytes_per_pixel = 1
+            self.dtype = np.uint8
+            self.image_width, self.image_height = (0, 0)
+            if len(self.index) > 0:
+                with self._lock:
+                    first_index = list(self.index.values())[0]
+                self._parse_first_index(first_index)
 
-        # figure out the mapping of channel name to position by reading image metadata
-        self._channels = {}
-        self._parse_string_axes()
-
-        # get information about image width and height, assuming that they are consistent for whole dataset
-        # (which is not necessarily true but convenient when it is)
-        self.bytes_per_pixel = 1
-        self.dtype = np.uint8
-        self.image_width, self.image_height = (0, 0)
-        if len(self.index) > 0:
-            with self._lock:
-                first_index = list(self.index.values())[0]
-            self._parse_first_index(first_index)
-
-        print("\rDataset opened                ")
+            print("\rDataset opened                ")
 
     def __enter__(self):
         return self
@@ -134,23 +132,14 @@ class NDTiffDataset:
         For datasets currently being acquired, check whether a new image has arrived since this function
         was last called, so that a viewer displaying the data can be updated.
         """
-        # pass through to full resolution, since only this is monitored in current implementation
-        if not hasattr(self, '_new_image_arrived'):
-            return False # pre-initilization
+        # TODO: I think this check is no longer needed. comment out for now and remove later
+        # if not hasattr(self, '_new_image_arrived'):
+        #     return False # pre-initilization
         new = self._new_image_arrived
         self._new_image_arrived = False
         return new
 
-    def has_image(
-        self,
-        channel=None,
-        z=None,
-        time=None,
-        position=None,
-        row=None,
-        column=None,
-        **kwargs
-    ):
+    def has_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         """Check if this image is present in the dataset
 
         Parameters
@@ -179,16 +168,7 @@ class NDTiffDataset:
             return self._does_have_image(self._consolidate_axes(
                 channel, z, position, time, row, column, **kwargs))
 
-    def read_image(
-        self,
-        channel=None,
-        z=None,
-        time=None,
-        position=None,
-        row=None,
-        column=None,
-        **kwargs
-    ):
+    def read_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         """
         Read image data as numpy array
 
@@ -220,16 +200,7 @@ class NDTiffDataset:
 
             return self._do_read_image(axes)
 
-    def read_metadata(
-        self,
-        channel=None,
-        z=None,
-        time=None,
-        position=None,
-        row=None,
-        column=None,
-        **kwargs
-    ):
+    def read_metadata(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         """
         Read metadata only. Faster than using read_image to retrieve metadata
 
@@ -263,7 +234,65 @@ class NDTiffDataset:
 
             return self._do_read_metadata(axes)
 
+    def put_image(self, axes, image, metadata):
+        """
+        Write an image to the dataset
 
+        Parameters
+        ----------
+        axes : dict
+            dictionary of axis names and positions
+        image : numpy array
+            image data
+        metadata : dict
+            image metadata
+
+        """
+        if self.read_only:
+            raise RuntimeError("Cannot write to a read-only dataset")
+
+        # Ensure each axis takes all integer or all string values
+        for axis_name, position in axes.items():
+            if axis_name not in self.axes_types:
+                if isinstance(position, int):
+                    self.axes_types[axis_name] = int
+                elif isinstance(position, str):
+                    self.axes_types[axis_name] = str
+                else:
+                    raise RuntimeError("Axis values must be either integers or strings")
+            elif type(position) != self.axes_types[axis_name]:
+                raise RuntimeError("can't mix String and Integer values along an axis")
+
+        # TODO: add to write pending images
+        # TODO: multi-threading or probably async io to speed it up
+        # write the image to disk
+        if self.current_writer is None:
+            filename = 'NDTiffStack.tif'
+            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
+            self.file_index += 1
+            # create the index file
+            self._index_file = open(self.path + "NDTiff.index", "wb")
+        elif not self.current_writer.has_space_to_write(image, metadata):
+            self.current_writer.finished_writing()
+            filename = 'NDTiffStack_{}.tif'.format(self.file_index)
+            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
+            self.file_index += 1
+
+
+        index_data_entry = self.current_writer.write_image(frozenset(axes.items()), image, metadata)
+        # create readers and update axes
+        self.add_index_entry(index_data_entry)
+        # write the index to disk
+        self._index_file.write(index_data_entry.as_byte_buffer().getvalue())
+
+    def finished_writing(self):
+        """
+        Finish writing to the dataset
+        """
+        if self.current_writer is not None:
+            self.current_writer.finished_writing()
+            self.current_writer = None
+        self._index_file.close()
 
     def get_index_keys(self):
         """
@@ -273,22 +302,35 @@ class NDTiffDataset:
         # convert to dict
         return [{axis_name: position for axis_name, position in key} for key in frozen_set_list]
 
+    # For backwards compatibility with the pycromanager code that calls it, can be removed in a future version
     def _add_index_entry(self, data):
+        self.add_index_entry()
+
+    def add_index_entry(self, data):
         """
-        Add entry for a image that has been recieved and is now on disk
-        This is used to get access to a dataset that is currently being
-        written by java side
+        Add entry for an image that has been received and is now on disk
+        This is used when the data is being written outside this class (i.e. by Java code)
+
+        Parameters
+        ----------
+        data : bytes or NDTiffIndexEntry
+            binary data for the index entry
         """
         with self._lock:
-            _, axes, index_entry = self.read_single_index_entry(data)
-            self.index[frozenset(axes.items())] = index_entry
+            if isinstance(data, NDTiffIndexEntry):
+                index_entry = data
+                # reconvert to dict from frozenset
+                axes = {axis_name: position for axis_name, position in index_entry.axes_key}
+                self.index[index_entry.axes_key] = index_entry
+            else:
+                _, axes, index_entry = NDTiffIndexEntry.unpack_single_index_entry(data)
+                self.index[frozenset(axes.items())] = index_entry
 
-            if index_entry["filename"] not in self._readers_by_filename:
-                new_reader = _SingleNDTiffReader(self.path + index_entry["filename"], file_io=self.file_io)
-                self._readers_by_filename[index_entry["filename"]] = new_reader
+            if index_entry.filename not in self._readers_by_filename:
+                new_reader = SingleNDTiffReader(os.sep.join((self.path, index_entry.filename)), file_io=self.file_io)
+                self._readers_by_filename[index_entry.filename] = new_reader
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
-
 
             # update the axes that have been seen
             for axis_name in axes.keys():
@@ -387,17 +429,17 @@ class NDTiffDataset:
         """
         Read through first index to get some global data about images (assuming it is same for all)
         """
-        if first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT_RGB:
+        if first_index["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_RGB:
             self.bytes_per_pixel = 3
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.EIGHT_BIT_MONOCHROME:
+        elif first_index["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_MONOCHROME:
             self.bytes_per_pixel = 1
             self.dtype = np.uint8
-        elif first_index["pixel_type"] == _SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.TEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == _SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
+        elif first_index["pixel_type"] == SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
+                first_index["pixel_type"] == SingleNDTiffReader.TEN_BIT_MONOCHROME or \
+                first_index["pixel_type"] == SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
             self.bytes_per_pixel = 2
             self.dtype = np.uint16
 
@@ -408,10 +450,7 @@ class NDTiffDataset:
         key = frozenset(axes.items())
         return key in self.index
 
-    def _do_read_image(
-        self,
-        axes,
-    ):
+    def _do_read_image(self, axes,):
         # determine which reader contains the image
         key = frozenset(axes.items())
         if key not in self.index:

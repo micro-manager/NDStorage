@@ -20,6 +20,7 @@ MINOR_VERSION = 3
 BYTES_PER_GIG = 1073741824
 MAX_FILE_SIZE = 4 * BYTES_PER_GIG
 
+ENTRIES_PER_IFD = 13
 # Required tags
 WIDTH = 256
 HEIGHT = 257
@@ -61,7 +62,7 @@ def _get_axis_order_key(dict_item):
         return 3  # stack next to channel axes
 
 
-class _SinlgeNDTiffWriter:
+class SingleNDTiffWriter:
 
     def __init__(self, directory, filename, summary_md):
         self.filename = os.path.join(directory, filename)
@@ -89,8 +90,20 @@ class _SinlgeNDTiffWriter:
         self.file.seek(0)
 
         self._write_mm_header_and_summary_md(summary_md)
-        self.reader = _SingleNDTiffReader(self.filename, summary_md=summary_md)
+        self.reader = SingleNDTiffReader(self.filename, summary_md=summary_md)
 
+    def has_space_to_write(self, pixels, metadata):
+        rgb = pixels.ndim == 3 and pixels.shape[2] == 3
+        md_length = len(metadata)
+        IFD_size = ENTRIES_PER_IFD * 12 + 4 + 16
+        extra_padding = 5000000  # 5 MB extra padding
+        bytes_per_pixels = self._bytes_per_image_pixels(pixels, rgb)
+
+        size = md_length + IFD_size + bytes_per_pixels + extra_padding + self.file.tell()
+
+        if size >= MAX_FILE_SIZE:
+            return False
+        return True
 
     def _write_mm_header_and_summary_md(self, summary_md):
         summary_md_bytes = self._get_bytes_from_string(json.dumps(summary_md))
@@ -142,7 +155,30 @@ class _SinlgeNDTiffWriter:
         self.file.write(buffer)
         self.file.seek(current_pos)
 
-    def write_image(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth):
+    def write_image(self, index_key, pixels, metadata, bit_depth='auto'):
+        """
+        Write an image to the file
+
+        Parameters
+        ----------
+        index_key : frozenset
+            The key to index the image
+        pixels : np.ndarray or bytearray
+            The image data
+        metadata : dict or str
+            The metadata for the image
+        bit_depth : int
+            The bit depth of the image
+
+        Returns
+        -------
+        NDTiffIndexEntry
+            The index entry for the image
+        """
+        image_height, image_width = pixels.shape
+        rgb = pixels.ndim == 3 and pixels.shape[2] == 3
+        if bit_depth == 'auto':
+            bit_depth = 8 if pixels.dtype == np.uint8 else 16
         # if metadata is a dict, serialize it to a json string and make it a utf8 byte buffer
         if isinstance(metadata, dict):
             metadata = self._get_bytes_from_string(json.dumps(metadata))
@@ -240,7 +276,7 @@ class _SinlgeNDTiffWriter:
         }.get(bit_depth, NDTiffIndexEntry.EIGHT_BIT_RGB if rgb else None)
 
         return NDTiffIndexEntry(index_key, pixel_type, pixel_data_offset, image_width, image_height, metadata_offset,
-                                len(metadata), self.filename)
+                                len(metadata), self.filename.split(os.sep)[-1])
 
     def _write_ifd_entry(self, buffer, tag, dtype, count, value, buffer_position):
         struct.pack_into('<HHII', buffer, buffer_position, tag, dtype, count, value)
@@ -271,7 +307,7 @@ class _SinlgeNDTiffWriter:
                 raise RuntimeError("unknown pixel type")
 
 
-class _SingleNDTiffReader:
+class SingleNDTiffReader:
     """
     Class corresponsing to a single multipage tiff file
     Pass the full path of the TIFF to instantiate and call close() when finished

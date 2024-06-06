@@ -13,7 +13,7 @@ def read_ndtiff_index(data, verbose=True):
     while position < len(data):
         if verbose:
             print("\rReading index... {:.1f}%       ".format(100 * (1 - (len(data) - position) / len(data))), end="")
-        entry = NDTiffIndexEntry.read_single_index_entry(data, position)
+        entry = NDTiffIndexEntry.unpack_single_index_entry(data, position)
         if entry is None:
             break
         position, axes, index_entry = entry
@@ -47,6 +47,13 @@ class NDTiffIndexEntry:
         self.filename = filename
         self.data_set_finished_entry = axes_key is None
 
+    # for backwards comapatibility when this was a dict
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
     @classmethod
     def create_finished_entry(cls):
         return cls()
@@ -73,7 +80,7 @@ class NDTiffIndexEntry:
             data = f.read()
             position = 0
             while position < len(data):
-                result = NDTiffIndexEntry.read_single_index_entry(data, position)
+                result = NDTiffIndexEntry.unpack_single_index_entry(data, position)
                 if result is None:
                     break
                 position, axes, index_entry = result
@@ -86,7 +93,10 @@ class NDTiffIndexEntry:
             return index_map
 
     @staticmethod
-    def read_single_index_entry(data, position=0):
+    def unpack_single_index_entry(data, position=0):
+        """
+        Unpacks a single index entry from the data buffer
+        """
         (axes_length,) = struct.unpack("I", data[position: position + 4])
         if axes_length == 0:
             warnings.warn(
@@ -102,7 +112,7 @@ class NDTiffIndexEntry:
         pixel_offset, image_width, image_height, pixel_type, pixel_compression, \
             metadata_offset, metadata_length, metadata_compression = \
             struct.unpack("IIIIIIII", data[position: position + 32])
-        index_entry = NDTiffIndexEntry(frozenset(axes.items), pixel_type, pixel_offset, image_width, image_height,
+        index_entry = NDTiffIndexEntry(axes.items, pixel_type, pixel_offset, image_width, image_height,
                                         metadata_offset, metadata_length, filename)
         position += 32
         return position, axes, index_entry
@@ -130,15 +140,16 @@ class NDTiffIndexEntry:
             raise RuntimeError("Unknown pixel type")
 
     def as_byte_buffer(self):
-        axes_key_bytes = self.axes_key.encode('utf-8') if self.axes_key else b''
-        filename_bytes = self.filename.encode('utf-8') if self.filename else b''
+        axes = {axis_name: position for axis_name, position in self.axes_key}
+        axes_key_bytes = json.dumps(axes).encode('utf-8')
+        filename_bytes = self.filename.encode('utf-8')
 
         buffer = BytesIO()
         buffer.write(struct.pack('I', len(axes_key_bytes)))
         buffer.write(axes_key_bytes)
         buffer.write(struct.pack('I', len(filename_bytes)))
         buffer.write(filename_bytes)
-        buffer.write(struct.pack('IIIIIIII', self.pix_offset, self.pix_width, self.pix_height,
+        buffer.write(struct.pack('IIIIIIII', self.pix_offset, self.image_width, self.image_height,
                                  self.pixel_type, self.pixel_compression, self.md_offset, self.md_length,
                                  self.md_compression))
         buffer.seek(0)
