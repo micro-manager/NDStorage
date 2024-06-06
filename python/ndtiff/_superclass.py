@@ -1,5 +1,5 @@
 import os
-from ndtiff.nd_tiff_current import NDTiffDataset, NDTiffPyramidDataset
+from ndtiff.ndtiff_file import NDTiffDataset, NDTiffPyramidDataset
 from ndtiff.nd_tiff_v2 import NDTiff_v2_0
 from ndtiff.ndtiff_v1 import NDTiff_v1
 import numpy as np
