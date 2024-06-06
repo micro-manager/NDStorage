@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.micro-manager.ndtiffstorage</groupId>
     <artifactId>NDTiffStorage</artifactId>
-    <version>2.16.0</version>
+    <version>2.16.1</version>
     <packaging>jar</packaging>
     <name>NDTiff Storage file format</name>
     <description>Java-based writer and reader used for NDTiffStorage format</description>
@@ -104,17 +104,24 @@
          </execution>
         </executions>
        </plugin>
-       <plugin>
+      <plugin>
       <groupId>org.sonatype.plugins</groupId>
       <artifactId>nexus-staging-maven-plugin</artifactId>
-      <version>1.6.7</version>
+      <version>1.6.8</version>
       <extensions>true</extensions>
       <configuration>
-         <serverId>ossrh</serverId>
-         <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
-         <autoReleaseAfterClose>true</autoReleaseAfterClose>
+       <serverId>ossrh</serverId>
+       <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+       <autoReleaseAfterClose>true</autoReleaseAfterClose>
       </configuration>
-    </plugin>
+      <dependencies>
+       <dependency>
+         <groupId>com.thoughtworks.xstream</groupId>
+         <artifactId>xstream</artifactId>
+         <version>1.4.15</version> <!-- apparently this needs to be exactly this version -->
+       </dependency>
+      </dependencies>
+      </plugin>
       </plugins>
      </build>
 
