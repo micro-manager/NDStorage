@@ -665,6 +665,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     */
    @Override
    public void increaseMaxResolutionLevel(int newMaxResolutionLevel) {
+      if (!tiled_) {
+         return; // only tiled images support multiple resolutions
+      }
       int oldMaxResolutionLevel = maxResolutionLevel_;
       maxResolutionLevel_ = Math.max(newMaxResolutionLevel, oldMaxResolutionLevel);
       if (fullResStorage_.imageKeys().size() == 0) {
