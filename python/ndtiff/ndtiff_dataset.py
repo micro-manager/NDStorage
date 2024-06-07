@@ -14,29 +14,6 @@ from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
 from ndtiff.ndtiff_file import SingleNDTiffWriter
 
-
-def _create_unique_acq_dir(root, prefix):
-    if not os.path.exists(root):
-        os.makedirs(root)
-
-    pattern = re.compile(re.escape(prefix) + r"_(\d+).*", re.IGNORECASE)
-    max_number = 0
-
-    for acq_dir in os.listdir(root):
-        match = pattern.match(acq_dir)
-        if match:
-            try:
-                number = int(match.group(1))
-                max_number = max(max_number, number)
-            except ValueError:
-                pass
-
-    new_dir_name = f"{prefix}_{max_number + 1}"
-    new_dir_path = os.path.join(root, new_dir_name)
-    os.makedirs(new_dir_path)
-
-    return new_dir_path
-
 class NDTiffDataset:
     """
     Class that opens a single NDTiff dataset
@@ -77,6 +54,7 @@ class NDTiffDataset:
             self.current_writer = None
             self.file_index = 0
             self.name = name
+            self._write_pending_images = {}
             if name is not None:
                 # create a folder to hold the new Tiff files
                 self.path = _create_unique_acq_dir(dataset_path, name)
@@ -84,6 +62,7 @@ class NDTiffDataset:
                 self.path = dataset_path
                 self.path += "" if self.path[-1] == os.sep else os.sep
         else:
+            self._write_pending_images = None
             self.read_only = True
             self.path = dataset_path
             self.path += "" if self.path[-1] == os.sep else os.sep
@@ -197,8 +176,13 @@ class NDTiffDataset:
             indicating whether the dataset has an image matching the specifications
         """
         with self._lock:
-            return self._does_have_image(self._consolidate_axes(
-                channel, z, position, time, row, column, **kwargs))
+            axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
+
+            if self._write_pending_images is not None and len(self._write_pending_images) > 0:
+                if frozenset(axes.items()) in self._write_pending_images:
+                    return True
+
+            return self._does_have_image(axes)
 
     def read_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         """
@@ -228,7 +212,12 @@ class NDTiffDataset:
 
         """
         with self._lock:
-            axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs )
+            axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
+
+            if self._write_pending_images is not None and len(self._write_pending_images) > 0:
+                if frozenset(axes.items()) in self._write_pending_images:
+                    return self._write_pending_images[frozenset(axes.items())][0]
+
 
             return self._do_read_image(axes)
 
@@ -260,9 +249,11 @@ class NDTiffDataset:
 
         """
         with self._lock:
-            axes = self._consolidate_axes(
-                channel, z, position, time, row, column, **kwargs
-            )
+            axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
+
+            if self._write_pending_images is not None and len(self._write_pending_images) > 0:
+                if frozenset(axes.items()) in self._write_pending_images:
+                    return self._write_pending_images[frozenset(axes.items())][1]
 
             return self._do_read_metadata(axes)
 
@@ -295,8 +286,9 @@ class NDTiffDataset:
             elif type(position) != self.axes_types[axis_name]:
                 raise RuntimeError("can't mix String and Integer values along an axis")
 
-        # TODO: add to write pending images
-        # TODO: multi-threading or probably async io to speed it up
+        # add to write pending images
+        self._write_pending_images[frozenset(axes.items())] = (image, metadata)
+
         # write the image to disk
         if self.current_writer is None:
             filename = 'NDTiffStack.tif'
@@ -320,6 +312,9 @@ class NDTiffDataset:
         self.add_index_entry(index_data_entry)
         # write the index to disk
         self._index_file.write(index_data_entry.as_byte_buffer().getvalue())
+        # remove from pending images
+        del self._write_pending_images[frozenset(axes.items())]
+
 
     def finished_writing(self):
         """
@@ -386,7 +381,8 @@ class NDTiffDataset:
     def _consolidate_axes(self, channel: int or str, z: int, position: int,
                           time: int, row: int, column: int, **kwargs):
         """
-        Pack axes into a convenient format
+        Combine all the axes with standard names and custom names into a single dictionary, eliminating
+        any None values. Also, convert any string-valued axes passed as ints into strings
         """
         if ('channel_name' in kwargs):
             warnings.warn('channel_name is deprecated, use "channel" instead')
@@ -459,7 +455,6 @@ class NDTiffDataset:
                             self._channels[channel_name] = single_axes_position[_CHANNEL_AXIS]
                         if len(self._channels.values()) == len(self.axes[_CHANNEL_AXIS]):
                             break
-
 
     def _parse_first_index(self, first_index):
         """
@@ -634,3 +629,25 @@ class NDTiffDataset:
 
         return array
 
+
+def _create_unique_acq_dir(root, prefix):
+    if not os.path.exists(root):
+        os.makedirs(root)
+
+    pattern = re.compile(re.escape(prefix) + r"_(\d+).*", re.IGNORECASE)
+    max_number = 0
+
+    for acq_dir in os.listdir(root):
+        match = pattern.match(acq_dir)
+        if match:
+            try:
+                number = int(match.group(1))
+                max_number = max(max_number, number)
+            except ValueError:
+                pass
+
+    new_dir_name = f"{prefix}_{max_number + 1}"
+    new_dir_path = os.path.join(root, new_dir_name)
+    os.makedirs(new_dir_path)
+
+    return new_dir_path

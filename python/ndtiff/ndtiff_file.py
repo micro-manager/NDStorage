@@ -127,16 +127,8 @@ class SingleNDTiffWriter:
         # 8 bytes for summaryMD header and summary md length
         struct.pack_into('<II', header_buffer, 20, SUMMARY_MD_HEADER, md_length)
 
-        buffers = [header_buffer, summary_md_bytes]
-        self._file_channel_write_sequential(buffers)
-
-    def _file_channel_write_sequential(self, buffers):
-        num_bytes_written = 0
-
-        for buffer in buffers:
+        for buffer in [header_buffer, summary_md_bytes]:
             self.file.write(buffer)
-            num_bytes_written += len(buffer)
-
 
     def _get_bytes_from_string(self, s):
         return s.encode('utf-8')
@@ -183,15 +175,11 @@ class SingleNDTiffWriter:
         if isinstance(metadata, dict):
             metadata = self._get_bytes_from_string(json.dumps(metadata))
         ied = self._write_ifd(index_key, pixels, metadata, rgb, image_height, image_width, bit_depth)
-        self._write_buffers()
+        while self.buffers:
+            self.file.write(self.buffers.popleft())
         self.index_map[index_key] = ied
         return ied
 
-    def _write_buffers(self):
-        buffers = []
-        while self.buffers:
-            buffers.append(self.buffers.popleft())
-        self._file_channel_write_sequential(buffers)
 
     def _write_ifd(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth):
         if self.file.tell() % 2 == 1:
