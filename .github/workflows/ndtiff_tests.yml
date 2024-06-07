@@ -1,4 +1,4 @@
-name: Reader tests
+name: Test Python reader and writer
 
 on: 
   pull_request:
@@ -15,7 +15,7 @@ on:
 #     cancel-in-progress: true
 
 jobs:
-  test-python-reader:
+  test-python:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
