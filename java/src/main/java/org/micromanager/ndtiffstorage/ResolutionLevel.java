@@ -200,7 +200,7 @@ public final class ResolutionLevel {
    }
 
    public IndexEntryData putImage(String indexKey, Object pixels, byte[] metadata,
-                                  boolean rgb, int imageHeight, int imageWidth, int bitDepth) throws IOException {
+                                  boolean rgb, int imageHeight, int imageWidth, Integer bitDepth) throws IOException {
       if (!newDataSet_) {
          throw new RuntimeException("Tried to write image to a finished data set");
       }
@@ -396,7 +396,7 @@ public final class ResolutionLevel {
       }
 
       public IndexEntryData writeImage(String indexKey, Object pixels, byte[] metadata,
-                                       boolean rgb, int imageHeight, int imageWidth, int bitDepth) throws IOException {
+                                       boolean rgb, int imageHeight, int imageWidth, Integer bitDepth) throws IOException {
             //check if current writer is out of space, if so, make a new one
             if (!tiffWriters_.getLast().hasSpaceToWrite(pixels, metadata, rgb)) {
                if (masterMultiResStorage_.debugLogger_ != null) {
@@ -426,18 +426,13 @@ public final class ResolutionLevel {
                }
             }
 
-
             //write image
             try {
-//               if (masterMultiResStorage_.debugLogger_ != null) {
-//                  masterMultiResStorage_.debugLogger_.accept("Writing image tczp: " + tIndex + "  " +
-//                          cIndex + " " + zIndex + " " + posIndex);
-//               }
+
                long start = System.nanoTime();
                IndexEntryData indexMetedata = tiffWriters_.getLast().writeImage(indexKey, pixels, metadata,
                                   rgb, imageHeight, imageWidth, bitDepth);
                if (masterMultiResStorage_.debugLogger_ != null) {
-//                  masterMultiResStorage_.debugLogger_.accept("Finished writing image");
                   masterMultiResStorage_.debugLogger_.accept("write_image_time_" + (System.nanoTime() - start));
                }
                return indexMetedata;
