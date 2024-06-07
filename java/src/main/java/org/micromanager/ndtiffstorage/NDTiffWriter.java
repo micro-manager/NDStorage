@@ -75,10 +75,6 @@ public class NDTiffWriter {
 
    private long startTime_;
 
-   private ArrayList<Long>  writeTimes = new ArrayList<Long>();
-   private ArrayList<Long> writeTimes2 = new ArrayList<Long>();
-
-
 
    public NDTiffWriter(String directory, String filename,
                        JSONObject summaryMD, NDTiffStorage mpTiffStorage) throws IOException {
@@ -141,20 +137,15 @@ public class NDTiffWriter {
 
 
    private void fileChannelWriteSequential(final ByteBuffer[] buffers) {
-      long e0 = System.nanoTime();
 
       try {
          long numBytesWritten = fileChannel_.write(buffers);
       } catch (IOException e) {
          throw new RuntimeException(e);
       }
-      long e1 = System.nanoTime();
       for (ByteBuffer buffer : buffers) {
          masterMPTiffStorage_.tryRecycleLargeBuffer(buffer);
       }
-      long e2 = System.nanoTime();
-      writeTimes.add(e1-e0);
-      writeTimes2.add(e2-e1);
    }
 
    public NDTiffReader getReader() {
@@ -403,7 +394,7 @@ public class NDTiffWriter {
       } else if (bitDepth == 11) {
          pixelType = IndexEntryData.ELEVEN_BIT;
       } else {
-         throw new RuntimeException("Unknown pixel type");
+         pixelType = pixels instanceof byte[] ? IndexEntryData.EIGHT_BIT : IndexEntryData.SIXTEEN_BIT;
       }
 
       return new IndexEntryData(indexKey, pixelType, pixelDataOffset, imageWidth, imageHeight,
