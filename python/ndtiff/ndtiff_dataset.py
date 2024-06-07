@@ -5,7 +5,7 @@ import warnings
 import dask.array as da
 from sortedcontainers import SortedSet
 from functools import partial
-import re
+import re 
 
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 from ndtiff.ndtiff_file import SingleNDTiffReader
