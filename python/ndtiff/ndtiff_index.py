@@ -39,11 +39,11 @@ class NDTiffIndexEntry:
         self.pix_offset = pix_offset
         self.image_width = image_width
         self.image_height = image_height
-        self.md_length = md_length
-        self.md_offset = md_offset
+        self.metadata_length = md_length
+        self.metadata_offset = md_offset
         self.pixel_type = pixel_type
         self.pixel_compression = self.UNCOMPRESSED
-        self.md_compression = self.UNCOMPRESSED
+        self.metadata_compression = self.UNCOMPRESSED
         self.filename = filename
         self.data_set_finished_entry = axes_key is None
 
@@ -150,8 +150,8 @@ class NDTiffIndexEntry:
         buffer.write(struct.pack('I', len(filename_bytes)))
         buffer.write(filename_bytes)
         buffer.write(struct.pack('IIIIIIII', self.pix_offset, self.image_width, self.image_height,
-                                 self.pixel_type, self.pixel_compression, self.md_offset, self.md_length,
-                                 self.md_compression))
+                                 self.pixel_type, self.pixel_compression, self.metadata_offset, self.metadata_length,
+                                 self.metadata_compression))
         buffer.seek(0)
         return buffer
 
@@ -162,14 +162,3 @@ class NDTiffIndexEntry:
     @staticmethod
     def serialize_axes(axes):
         return json.dumps(OrderedDict(sorted(axes.items())))
-
-class EssentialImageMetadata:
-    def __init__(self, width, height, bit_depth, is_rgb):
-        self.width = width
-        self.height = height
-        self.bit_depth = bit_depth
-        self.is_rgb = is_rgb
-
-    def __str__(self):
-        return f'EssentialImageMetadata(width={self.width}, height={self.height}, bit_depth={self.bit_depth}, is_rgb={self.is_rgb})'
-

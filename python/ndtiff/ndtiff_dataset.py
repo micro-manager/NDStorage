@@ -5,6 +5,7 @@ import warnings
 import dask.array as da
 from sortedcontainers import SortedSet
 from functools import partial
+import re
 
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 from ndtiff.ndtiff_file import SingleNDTiffReader
@@ -13,12 +14,36 @@ from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
 from ndtiff.ndtiff_file import SingleNDTiffWriter
 
+
+def _create_unique_acq_dir(root, prefix):
+    if not os.path.exists(root):
+        os.makedirs(root)
+
+    pattern = re.compile(re.escape(prefix) + r"_(\d+).*", re.IGNORECASE)
+    max_number = 0
+
+    for acq_dir in os.listdir(root):
+        match = pattern.match(acq_dir)
+        if match:
+            try:
+                number = int(match.group(1))
+                max_number = max(max_number, number)
+            except ValueError:
+                pass
+
+    new_dir_name = f"{prefix}_{max_number + 1}"
+    new_dir_path = os.path.join(root, new_dir_name)
+    os.makedirs(new_dir_path)
+
+    return new_dir_path
+
 class NDTiffDataset:
     """
     Class that opens a single NDTiff dataset
     """
 
-    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None, **kwargs):
+    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None,
+                 name=None, **kwargs):
         """
         Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
@@ -31,6 +56,8 @@ class NDTiffDataset:
             A container containing various methods for interacting with files.
         summary_metadata : dict
             Summary metadata for a dataset being written to disk
+        name : str
+            Name of the dataset if writing a new dataset
         """
         self.file_io = file_io
         # if it is in fact a pyramid, the parent class will handle this. I think this implies that
@@ -46,17 +73,22 @@ class NDTiffDataset:
             self.index = {}
             self._readers_by_filename = {}
             self._summary_metadata = summary_metadata
-            self.path = dataset_path
-            self.path += "" if self.path[-1] == os.sep else os.sep
             self.read_only = False
             self.current_writer = None
             self.file_index = 0
+            self.name = name
+            if name is not None:
+                # create a folder to hold the new Tiff files
+                self.path = _create_unique_acq_dir(dataset_path, name)
+            else:
+                self.path = dataset_path
+                self.path += "" if self.path[-1] == os.sep else os.sep
         else:
             self.read_only = True
             self.path = dataset_path
             self.path += "" if self.path[-1] == os.sep else os.sep
             print("\rReading index...          ", end="")
-            with self.file_io.open(self.path + "NDTiff.index", "rb") as index_file:
+            with self.file_io.open(os.sep.join((self.path, "NDTiff.index")), "rb") as index_file:
                 data = index_file.read()
                 self.index = read_ndtiff_index(data)
 
@@ -268,10 +300,12 @@ class NDTiffDataset:
         # write the image to disk
         if self.current_writer is None:
             filename = 'NDTiffStack.tif'
+            if self.name is not None:
+                filename = self.name + '_' + filename
             self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
             self.file_index += 1
             # create the index file
-            self._index_file = open(self.path + "NDTiff.index", "wb")
+            self._index_file = open(os.path.join((self.path + "NDTiff.index")), "wb")
         elif not self.current_writer.has_space_to_write(image, metadata):
             self.current_writer.finished_writing()
             filename = 'NDTiffStack_{}.tif'.format(self.file_index)
@@ -597,3 +631,4 @@ class NDTiffDataset:
         )
 
         return array
+

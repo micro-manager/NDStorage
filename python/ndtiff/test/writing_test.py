@@ -36,7 +36,7 @@ def test_write_single_file(test_data_path):
 
 def test_write_full_dataset(test_data_path):
     """
-    Write an NDTiff dataset
+    Write an NDTiff dataset and read it back in, testing pixels and metadata
     """
     full_path = os.path.join(test_data_path, 'test_write_full_dataset')
     dataset = NDTiffDataset(full_path, summary_metadata={})
@@ -49,7 +49,7 @@ def test_write_full_dataset(test_data_path):
         images.append(pixels)
     for time in range(10):
         axes = {'time': time}
-        dataset.put_image(axes, images[time], {})
+        dataset.put_image(axes, images[time], {'time_metadata': time})
 
     dataset.finished_writing()
 
@@ -60,3 +60,6 @@ def test_write_full_dataset(test_data_path):
         axes = {'time': time}
         read_image = dataset.read_image(**axes)
         assert np.all(read_image == pixels)
+        assert dataset.read_metadata(**axes) == {'time_metadata': time}
+
+
