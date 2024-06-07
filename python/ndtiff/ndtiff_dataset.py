@@ -305,10 +305,12 @@ class NDTiffDataset:
             self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
             self.file_index += 1
             # create the index file
-            self._index_file = open(os.path.join((self.path + "NDTiff.index")), "wb")
+            self._index_file = open(os.path.join(self.path, "NDTiff.index"), "wb")
         elif not self.current_writer.has_space_to_write(image, metadata):
             self.current_writer.finished_writing()
             filename = 'NDTiffStack_{}.tif'.format(self.file_index)
+            if self.name is not None:
+                filename = self.name + '_' + filename
             self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
             self.file_index += 1
 
@@ -361,7 +363,7 @@ class NDTiffDataset:
                 self.index[frozenset(axes.items())] = index_entry
 
             if index_entry.filename not in self._readers_by_filename:
-                new_reader = SingleNDTiffReader(os.sep.join((self.path, index_entry.filename)), file_io=self.file_io)
+                new_reader = SingleNDTiffReader(os.path.join(self.path, index_entry.filename), file_io=self.file_io)
                 self._readers_by_filename[index_entry.filename] = new_reader
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
