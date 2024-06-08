@@ -7,7 +7,7 @@ from ndtiff.ndtiff_dataset import NDTiffDataset
 class NDTiffPyramidDataset:
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""
 
-    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, _summary_metadata=None):
+    def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None):
         """
         Provides access to a NDTiffStorage pyramid dataset,
         either one currently being acquired or one on disk
@@ -18,20 +18,20 @@ class NDTiffPyramidDataset:
             Abosolute path of top level folder of a dataset on disk
         file_io: ndtiff.file_io.NDTiffFileIO
             A container containing various methods for interacting with files.
-        _summary_metadata : dict
+        summary_metadata : dict
             Summary metadata, only not None for in progress datasets. Users need not call directly
         """
         self.file_io = file_io
         self._lock = threading.RLock()
-        if _summary_metadata is not None:
+        if summary_metadata is not None:
             # this dataset is a view of an active acquisition. The storage exists on the java side
             self.path = dataset_path
             self.path += "" if self.path[-1] == os.sep else os.sep
-            self.summary_metadata = _summary_metadata
+            self.summary_metadata = summary_metadata
 
             with self._lock:
                 full_res = NDTiffDataset(dataset_path=self.path + "Full resolution" + os.sep,
-                                         _summary_metadata=_summary_metadata, file_io=file_io)
+                                         summary_metadata=summary_metadata, file_io=file_io)
                 self.res_levels = {0: full_res}
                 full_res._full_resolution = True
             # No information related higher res levels when remote storage monitoring right now

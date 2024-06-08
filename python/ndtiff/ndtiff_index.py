@@ -5,9 +5,6 @@ from collections import OrderedDict
 from io import BytesIO
 
 def read_ndtiff_index(data, verbose=True):
-    """
-    Do not use directly -- this function will be made private in the future
-    """
     index = {}
     position = 0
     while position < len(data):

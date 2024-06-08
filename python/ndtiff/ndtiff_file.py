@@ -47,21 +47,6 @@ _Z_AXIS = "z"
 _TIME_AXIS = "time"
 _CHANNEL_AXIS = "channel"
 
-_AXIS_ORDER = {_ROW_AXIS: 7,
-               _COLUMN_AXIS: 6,
-               _POSITION_AXIS: 5, 
-               _TIME_AXIS: 4, 
-               _CHANNEL_AXIS:3, 
-               _Z_AXIS:2}
-
-def _get_axis_order_key(dict_item):
-    axis_name = dict_item[0]
-    if axis_name in _AXIS_ORDER.keys():
-        return _AXIS_ORDER[axis_name]
-    else:
-        return 3  # stack next to channel axes
-
-
 class SingleNDTiffWriter:
 
     def __init__(self, directory, filename, summary_md):
