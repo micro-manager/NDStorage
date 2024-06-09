@@ -18,7 +18,7 @@ data = Dataset('/path/to/data')
 
 or to write a new dataset:
 
-```
+```python
 import numpy as np
 from ndtiff import NDTiffDataset
 
