@@ -1,13 +1,10 @@
 from typing import List, Dict, Union
 
-from pycromanager.acquisition.acq_eng_py.main.acq_eng_metadata import AcqEngMetadata
-import numpy as np
-from sortedcontainers import SortedSet
 import threading
 from ndtiff.ndstorage_base import WritableNDStorage
 
 
-class NDRAMStorage(WritableNDStorage):
+class NDRAMDataset(WritableNDStorage):
     """
     A class for holding data in RAM
     Implements the methods needed to be a DataSink for AcqEngPy
@@ -57,14 +54,14 @@ class NDRAMStorage(WritableNDStorage):
     def read_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
         key = frozenset(axes.items())
-        if key not in self.index:
+        if key not in self.images.keys():
             raise Exception("image with keys {} not present in data set".format(key))
         return self.images[key]
 
     def read_metadata(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
         axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
         key = frozenset(axes.items())
-        if key not in self.index:
+        if key not in self.images.keys():
             raise Exception("image with keys {} not present in data set".format(key))
         return self.image_metadata[key]
 
