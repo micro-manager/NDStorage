@@ -39,7 +39,7 @@ def test_write_full_dataset(test_data_path):
     Write an NDTiff dataset and read it back in, testing pixels and metadata
     """
     full_path = os.path.join(test_data_path, 'test_write_full_dataset')
-    dataset = NDTiffDataset(full_path, summary_metadata={})
+    dataset = NDTiffDataset(full_path, summary_metadata={}, writable=True)
 
     image_height = 256
     image_width = 256
@@ -51,7 +51,7 @@ def test_write_full_dataset(test_data_path):
         axes = {'time': time}
         dataset.put_image(axes, images[time], {'time_metadata': time})
 
-    dataset.finished_writing()
+    dataset.finish()
 
     # read the file back in
     dataset = NDTiffDataset(full_path)

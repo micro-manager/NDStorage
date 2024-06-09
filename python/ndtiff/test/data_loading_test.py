@@ -45,7 +45,7 @@ def test_v3_magellan_explore(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'Magellan_expolore_multi_channel')
     dataset = Dataset(data_path)
     stitched = np.array(dataset.as_array(stitched=True, res_level=0))
-    
+
 def test_v3_magellan_explore_negative_and_overwritten(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'Magellan_expolore_negative_indices_and_overwritten')
     dataset = Dataset(data_path)

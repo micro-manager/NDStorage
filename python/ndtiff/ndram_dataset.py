@@ -14,6 +14,7 @@ class NDRAMStorage(WritableNDStorage):
     """
 
     def __init__(self):
+        super().__init__()
         self.images = {}
         self.image_metadata = {}
         self._finished_event = threading.Event()

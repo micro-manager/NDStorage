@@ -40,27 +40,27 @@ class NDStorage(ABC):
 
     """
 
-    _string_axes_values = {}
+    def __init__(self):
+        self._string_axes_values = {}
+        # a dictionary of the types (int or str) of each axis
+        # {'channel': str, 'z': int, 'time': int}
+        self.axes_types = {}
 
-    # a dictionary of the types (int or str) of each axis
-    # {'channel': str, 'z': int, 'time': int}
-    axes_types = {}
-
-    # a list of all the axes that have been seen with their values in order
-    # e.g. {'time': SortedSet([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])}
-    axes = {}
+        # a list of all the axes that have been seen with their values in order
+        # e.g. {'time': SortedSet([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])}
+        self.axes = {}
 
 
-    image_width = None
-    image_height = None
-    dtype = None
-    bytes_per_pixel = None
+        self.image_width = None
+        self.image_height = None
+        self.dtype = None
+        self.bytes_per_pixel = None
 
-    # for stitched datasets
-    _overlap = None
-    _full_resolution = None
+        # for stitched datasets
+        self._overlap = None
+        self._full_resolution = None
 
-    _new_image_event = threading.Event()
+        self._new_image_event = threading.Event()
 
     @abstractmethod
     def has_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,

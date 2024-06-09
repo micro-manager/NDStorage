@@ -12,7 +12,7 @@ from ndtiff.ndtiff_file import SingleNDTiffReader
 from ndtiff.ndtiff_file import _CHANNEL_AXIS
 from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
-from ndtiff.ndtiff_file import SingleNDTiffWriter
+from ndtiff.ndtiff_file import SingleNDTiffWriter, MAJOR_VERSION, MINOR_VERSION
 
 from ndtiff.ndstorage_base import WritableNDStorage
 
@@ -40,9 +40,13 @@ class NDTiffDataset(WritableNDStorage):
         writable : bool
             Whether it is a new dataset being written to disk
         """
+        super().__init__()
 
         self.file_io = file_io
         self._lock = threading.RLock()
+        if writable:
+            self.major_version = MAJOR_VERSION
+            self.minor_version = MINOR_VERSION
         if summary_metadata is not None or writable:
             # this dataset is either:
             #   - a view of an active acquisition. Image data is being written by code on the Java side
