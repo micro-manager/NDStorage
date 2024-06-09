@@ -14,7 +14,7 @@ from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
 from ndtiff.ndtiff_file import SingleNDTiffWriter
 
-from ndtiff.ndstorage_api import WritableNDStorage
+from ndtiff.ndstorage_base import WritableNDStorage
 
 class NDTiffDataset(WritableNDStorage):
     """
@@ -47,7 +47,6 @@ class NDTiffDataset(WritableNDStorage):
             # this dataset is either:
             #   - a view of an active acquisition. Image data is being written by code on the Java side
             #   - a new dataset being written to disk
-            self._new_image_arrived = False # used by custom (e.g. napari) viewer to check for updates. Will be reset to false by them
             self.index = {}
             self._readers_by_filename = {}
             self._summary_metadata = summary_metadata
@@ -112,13 +111,10 @@ class NDTiffDataset(WritableNDStorage):
 
             # get information about image width and height, assuming that they are consistent for whole dataset
             # (which is not necessarily true but convenient when it is)
-            self.bytes_per_pixel = 1
-            self.dtype = np.uint8
-            self.image_width, self.image_height = (0, 0)
             if len(self.index) > 0:
                 with self._lock:
                     first_index = list(self.index.values())[0]
-                self._parse_first_index(first_index)
+                self._parse_essential_image_metadata(first_index)
 
             print("\rDataset opened                ")
 
@@ -134,43 +130,7 @@ class NDTiffDataset(WritableNDStorage):
         """
         return list(self._channels.keys())
 
-    def has_new_image(self):
-        """
-        For datasets currently being acquired, check whether a new image has arrived since this function
-        was last called, so that a viewer displaying the data can be updated.
-        """
-        # TODO: I think this check is no longer needed. comment out for now and remove later
-        # if not hasattr(self, '_new_image_arrived'):
-        #     return False # pre-initilization
-        new = self._new_image_arrived
-        self._new_image_arrived = False
-        return new
-
     def has_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
-        """Check if this image is present in the dataset
-
-        Parameters
-        ----------
-        channel : int or str
-            index of the channel, if applicable (Default value = None)
-        z : int
-            index of z slice, if applicable (Default value = None)
-        time : int
-            index of the time point, if applicable (Default value = None)
-        position : int
-            index of the XY position, if applicable (Default value = None)
-        row : int
-            index of tile row for XY tiled datasets (Default value = None)
-        column : int
-            index of tile column for XY tiled datasets (Default value = None)
-        **kwargs :
-            names and integer positions of any other axes
-
-        Returns
-        -------
-        bool :
-            indicating whether the dataset has an image matching the specifications
-        """
         with self._lock:
             axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
 
@@ -181,32 +141,6 @@ class NDTiffDataset(WritableNDStorage):
             return self._does_have_image(axes)
 
     def read_image(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
-        """
-        Read image data as numpy array
-
-        Parameters
-        ----------
-        channel : int or str
-            index of the channel, if applicable (Default value = None)
-        z : int
-            index of z slice, if applicable (Default value = None)
-        time : int
-            index of the time point, if applicable (Default value = None)
-        position : int
-            index of the XY position, if applicable (Default value = None)
-        row : int
-            index of tile row for XY tiled datasets (Default value = None)
-        column : int
-            index of tile column for XY tiled datasets (Default value = None)
-        **kwargs :
-            names and integer positions of any other axes
-
-        Returns
-        -------
-        image : numpy array or tuple
-            image as a 2D numpy array, or tuple with image and image metadata as dict
-
-        """
         with self._lock:
             axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
 
@@ -214,36 +148,9 @@ class NDTiffDataset(WritableNDStorage):
                 if frozenset(axes.items()) in self._write_pending_images:
                     return self._write_pending_images[frozenset(axes.items())][0]
 
-
             return self._do_read_image(axes)
 
     def read_metadata(self, channel=None, z=None, time=None, position=None, row=None, column=None, **kwargs):
-        """
-        Read metadata only. Faster than using read_image to retrieve metadata
-
-        Parameters
-        ----------
-        channel : int or str
-            index of the channel, if applicable (Default value = None)
-        z : int
-            index of z slice, if applicable (Default value = None)
-        time : int
-            index of the time point, if applicable (Default value = None)
-        position : int
-            index of the XY position, if applicable (Default value = None)
-        row : int
-            index of tile row for XY tiled datasets (Default value = None)
-        column : int
-            index of tile col for XY tiled datasets (Default value = None)
-
-        **kwargs :
-            names and integer positions of any other axes
-
-        Returns
-        -------
-        metadata : dict
-
-        """
         with self._lock:
             axes = self._consolidate_axes(channel, z, position, time, row, column, **kwargs)
 
@@ -254,28 +161,28 @@ class NDTiffDataset(WritableNDStorage):
             return self._do_read_metadata(axes)
 
     def put_image(self, coordinates, image, metadata):
-        """
-        Write an image to the dataset
-
-        Parameters
-        ----------
-        coordinates : dict
-            dictionary of axis names and positions
-        image : numpy array
-            image data
-        metadata : dict
-            image metadata
-
-        """
         if not self._writable:
             raise RuntimeError("Cannot write to a read-only dataset")
-
-        self._update_axes_types(coordinates)
 
         # add to write pending images
         self._write_pending_images[frozenset(coordinates.items())] = (image, metadata)
 
-        # write the image to disk
+        self._update_axes(coordinates)
+        self._update_channel_names(coordinates)
+
+        if self.dtype is None:
+            # infer global dtype for as_array method
+            self.image_height, self.image_width = image.shape[:2]
+            self.dtype = image.dtype
+            if self.dtype == np.uint8 and image.ndim == 3:
+                self.bytes_per_pixel = 3 # RGB
+            else:
+                self.bytes_per_pixel = 2 if self.dtype == np.uint16 else 1
+
+        # Update viewer as soon as image is ready in RAM
+        self._new_image_event.set()
+
+        # Create a new file if needed
         if self.current_writer is None:
             filename = 'NDTiffStack.tif'
             if self.name is not None:
@@ -292,10 +199,9 @@ class NDTiffDataset(WritableNDStorage):
             self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
             self.file_index += 1
 
-
         index_data_entry = self.current_writer.write_image(frozenset(coordinates.items()), image, metadata)
         # create readers and update axes
-        self.add_index_entry(index_data_entry)
+        self.add_index_entry(index_data_entry, new_image_updates=False)
         # write the index to disk
         self._index_file.write(index_data_entry.as_byte_buffer().getvalue())
         # remove from pending images
@@ -332,7 +238,7 @@ class NDTiffDataset(WritableNDStorage):
         warnings.warn("get_index_keys is deprecated, use get_image_coordinates_list instead", DeprecationWarning)
         return self.get_image_coordinates_list()
 
-    def add_index_entry(self, data):
+    def add_index_entry(self, data, new_image_updates=True):
         """
         Add entry for an image that has been received and is now on disk
         This is used when the data is being written outside this class (i.e. by Java code)
@@ -341,6 +247,8 @@ class NDTiffDataset(WritableNDStorage):
         ----------
         data : bytes or NDTiffIndexEntry
             binary data for the index entry
+        new_image_updates : bool
+            whether to signal that a new image is ready
         """
         with self._lock:
             if isinstance(data, NDTiffIndexEntry):
@@ -358,13 +266,14 @@ class NDTiffDataset(WritableNDStorage):
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
 
-            self._new_image_available(image_coordinates)
+            self._parse_essential_image_metadata(index_entry)
 
-            # update the map of channel names to channel indices
-            self._update_channel_names(image_coordinates)
+            if new_image_updates:
+                self._update_axes(image_coordinates)
+                self._update_channel_names(image_coordinates)
+                self._new_image_event.set()
 
-        if not hasattr(self, 'image_width'):
-            self._parse_first_index(index_entry)
+
 
         return image_coordinates
 
@@ -378,9 +287,6 @@ class NDTiffDataset(WritableNDStorage):
         """
         # iterate through the key_combos for each image
         if self.major_version >= 3 and self.minor_version >= 2:
-
-            self._parse_string_axes_values(image_coordinates)
-
             if _CHANNEL_AXIS in self._string_axes_values:
                 self._channels = {name: self._string_axes_values[_CHANNEL_AXIS].index(name)
                                   for name in self._string_axes_values[_CHANNEL_AXIS]}
@@ -401,26 +307,34 @@ class NDTiffDataset(WritableNDStorage):
                         if len(self._channels.values()) == len(self.axes[_CHANNEL_AXIS]):
                             break
 
-    def _parse_first_index(self, first_index):
+    def _parse_essential_image_metadata(self, index_entry):
         """
-        Read through first index to get some global data about images (assuming it is same for all)
+        Read through first index to get some global metadata about images
+        This is used for the as_array method to determine the dtype and shape of the array
+        It assumes that the image width and height and dtype are consistent across the dataset,
+        which is not necessarily true, but as_array doesn't work if its not anyway
         """
-        if first_index["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_RGB:
-            self.bytes_per_pixel = 3
-            self.dtype = np.uint8
-        elif first_index["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_MONOCHROME:
-            self.bytes_per_pixel = 1
-            self.dtype = np.uint8
-        elif first_index["pixel_type"] == SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
-                first_index["pixel_type"] == SingleNDTiffReader.TEN_BIT_MONOCHROME or \
-                first_index["pixel_type"] == SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
-            self.bytes_per_pixel = 2
-            self.dtype = np.uint16
+        if self.dtype is None:
+            if index_entry["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_RGB:
+                self.bytes_per_pixel = 3
+                self.dtype = np.uint8
+            elif index_entry["pixel_type"] == SingleNDTiffReader.EIGHT_BIT_MONOCHROME:
+                self.bytes_per_pixel = 1
+                self.dtype = np.uint8
+            elif index_entry["pixel_type"] == SingleNDTiffReader.SIXTEEN_BIT_MONOCHROME or \
+                    index_entry["pixel_type"] == SingleNDTiffReader.FOURTEEN_BIT_MONOCHROME or \
+                    index_entry["pixel_type"] == SingleNDTiffReader.TWELVE_BIT_MONOCHROME or \
+                    index_entry["pixel_type"] == SingleNDTiffReader.TEN_BIT_MONOCHROME or \
+                    index_entry["pixel_type"] == SingleNDTiffReader.ELEVEN_BIT_MONOCHROME:
+                self.bytes_per_pixel = 2
+                self.dtype = np.uint16
+            else:
+                warnings.warn("Unknown pixel type: {}\nAssuming 16 bit".format(index_entry["pixel_type"]))
+                self.bytes_per_pixel = 2
+                self.dtype = np.uint16
 
-        self.image_width = first_index["image_width"]
-        self.image_height = first_index["image_height"]
+            self.image_width = index_entry["image_width"]
+            self.image_height = index_entry["image_height"]
 
     def _does_have_image(self, axes):
         key = frozenset(axes.items())

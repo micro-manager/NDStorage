@@ -4,7 +4,7 @@ from pycromanager.acquisition.acq_eng_py.main.acq_eng_metadata import AcqEngMeta
 import numpy as np
 from sortedcontainers import SortedSet
 import threading
-from ndtiff.ndstorage_api import WritableNDStorage
+from ndtiff.ndstorage_base import WritableNDStorage
 
 
 class NDRAMStorage(WritableNDStorage):
@@ -34,31 +34,13 @@ class NDRAMStorage(WritableNDStorage):
         key = frozenset(coordinates.items())
         self.images[key] = image
         self.image_metadata[key] = metadata
-        for axis in coordinates.keys():
-            if axis not in self.axes:
-                self.axes[axis] = SortedSet()
-            self.axes[axis].add(coordinates[axis])
-        self._new_image_arrived = True
-
-        self._new_image_available(coordinates)
+        self._update_axes(coordinates)
+        self._new_image_event.set()
 
     def get_image_coordinates_list(self) -> List[Dict[str, Union[int, str]]]:
         frozen_set_list = list(self.images.keys())
         # convert to dict
         return [{axis_name: position for axis_name, position in key} for key in frozen_set_list]
-
-    # TODO: what to do with this?
-    def has_new_image(self):
-        """
-        For datasets currently being acquired, check whether a new image has arrived since this function
-        was last called, so that a viewer displaying the data can be updated.
-        """
-        # pass through to full resolution, since only this is monitored in current implementation
-        if not hasattr(self, '_new_image_arrived'):
-            return False # pre-initilization
-        new = self._new_image_arrived
-        self._new_image_arrived = False
-        return new
 
     #### ND Storage API ####
     def close(self):

@@ -1,3 +1,6 @@
+"""
+Abstract base class for ND image storage reading and writing
+"""
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Union, Tuple
 import numpy as np
@@ -6,6 +9,7 @@ import warnings
 from sortedcontainers import SortedSet
 from functools import partial
 import dask.array as da
+import threading
 
 from ndtiff.ndtiff_file import _POSITION_AXIS, _ROW_AXIS, _COLUMN_AXIS, _Z_AXIS, _TIME_AXIS, _CHANNEL_AXIS
 
@@ -55,6 +59,8 @@ class NDStorage(ABC):
     # for stitched datasets
     _overlap = None
     _full_resolution = None
+
+    _new_image_event = threading.Event()
 
     @abstractmethod
     def has_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,
@@ -167,6 +173,32 @@ class NDStorage(ABC):
         -------
         list
             List of image coordinates
+        """
+        pass
+
+    def await_new_image(self, timeout=None):
+        """
+        Wait for a new image to arrive in the dataset
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Maximum time to wait in seconds (Default value = None)
+
+        Returns
+        -------
+        bool
+            True if a new image has arrived, False if the timeout was reached
+        """
+        success = self._new_image_event.wait(timeout=timeout)
+        if success:
+            self._new_image_event.clear()
+        return success
+
+    @abstractmethod
+    def is_finished(self) -> bool:
+        """
+        Check if the dataset is finished and no more images will be added
         """
         pass
 
@@ -307,10 +339,22 @@ class NDStorage(ABC):
 
     ####### Private methods #######
 
-    def _new_image_available(self, image_coordinates):
+    def _update_axes(self, image_coordinates):
         """
         A new image has been added to the dataset, update the axes values and types
         """
+        # update and ensure that all axes are either string or integer
+        for axis_name, position in image_coordinates.items():
+            if axis_name not in self.axes_types:
+                if isinstance(position, int):
+                    self.axes_types[axis_name] = int
+                elif isinstance(position, str):
+                    self.axes_types[axis_name] = str
+                else:
+                    raise RuntimeError("Axis values must be either integers or strings")
+            elif type(position) != self.axes_types[axis_name]:
+                raise RuntimeError("can't mix String and Integer values along an axis")
+
         # update the axes that have been seen
         for axis_name in image_coordinates.keys():
             if axis_name not in self.axes.keys():
@@ -318,6 +362,7 @@ class NDStorage(ABC):
                 self.axes_types[axis_name] = type(image_coordinates[axis_name])
             self.axes[axis_name].add(image_coordinates[axis_name])
 
+        self._parse_string_axes_values(image_coordinates)
 
     def _parse_string_axes_values(self, image_coordinates):
         """
@@ -358,22 +403,6 @@ class NDStorage(ABC):
                 self.axes[axis_name].add(position)
         # Sort axes according to _AXIS_ORDER
         self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
-
-    def _update_axes_types(self, image_coordinates: Dict[str, Union[int, str]]):
-        """
-        Ensure each axis takes all integer or all string values
-        """
-        for axis_name, position in image_coordinates.items():
-            if axis_name not in self.axes_types:
-                if isinstance(position, int):
-                    self.axes_types[axis_name] = int
-                elif isinstance(position, str):
-                    self.axes_types[axis_name] = str
-                else:
-                    raise RuntimeError("Axis values must be either integers or strings")
-            elif type(position) != self.axes_types[axis_name]:
-                raise RuntimeError("can't mix String and Integer values along an axis")
-
 
     def _consolidate_axes(self, channel: int or str, z: int, position: int,
                           time: int, row: int, column: int, **kwargs):
@@ -435,6 +464,3 @@ class WritableNDStorage(NDStorage):
     def block_until_finished(self, timeout=None):
         pass
 
-    @abstractmethod
-    def is_finished(self) -> bool:
-        pass
