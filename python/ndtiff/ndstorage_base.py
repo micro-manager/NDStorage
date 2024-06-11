@@ -119,8 +119,8 @@ class NDStorage(ABC):
 
         Returns
         -------
-        image : numpy array or tuple
-            Image as a 2D numpy array, or tuple with image and image metadata as dict
+        image : numpy array
+            Image as a 2D numpy array
 
         """
         pass
@@ -338,6 +338,16 @@ class NDStorage(ABC):
 
 
     ####### Private methods #######
+
+    def _infer_image_properties(self, image):
+        if self.dtype is None:
+            # infer global dtype for as_array method
+            self.image_height, self.image_width = image.shape[:2]
+            self.dtype = image.dtype
+            if self.dtype == np.uint8 and image.ndim == 3:
+                self.bytes_per_pixel = 3 # RGB
+            else:
+                self.bytes_per_pixel = 2 if self.dtype == np.uint16 else 1
 
     def _update_axes(self, image_coordinates):
         """

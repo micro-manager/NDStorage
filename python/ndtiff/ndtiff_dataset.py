@@ -1,10 +1,9 @@
 import os
 import threading
+import time
+
 import numpy as np
 import warnings
-import dask.array as da
-from sortedcontainers import SortedSet
-from functools import partial
 import re
 
 from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
@@ -47,6 +46,7 @@ class NDTiffDataset(WritableNDStorage):
         if writable:
             self.major_version = MAJOR_VERSION
             self.minor_version = MINOR_VERSION
+            self._index_file = None
         if summary_metadata is not None or writable:
             # this dataset is either:
             #   - a view of an active acquisition. Image data is being written by code on the Java side
@@ -173,15 +173,7 @@ class NDTiffDataset(WritableNDStorage):
 
         self._update_axes(coordinates)
         self._update_channel_names(coordinates)
-
-        if self.dtype is None:
-            # infer global dtype for as_array method
-            self.image_height, self.image_width = image.shape[:2]
-            self.dtype = image.dtype
-            if self.dtype == np.uint8 and image.ndim == 3:
-                self.bytes_per_pixel = 3 # RGB
-            else:
-                self.bytes_per_pixel = 2 if self.dtype == np.uint16 else 1
+        self._infer_image_properties(image)
 
         # Update viewer as soon as image is ready in RAM
         self._new_image_event.set()
@@ -211,12 +203,12 @@ class NDTiffDataset(WritableNDStorage):
         # remove from pending images
         del self._write_pending_images[frozenset(coordinates.items())]
 
-
     def finish(self):
         if self.current_writer is not None:
             self.current_writer.finished_writing()
             self.current_writer = None
-        self._index_file.close()
+        if self._index_file is not None: # if no images were written, it never got opened
+            self._index_file.close()
         self._finished_event.set()
 
     def is_finished(self) -> bool:
