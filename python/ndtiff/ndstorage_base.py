@@ -1,5 +1,12 @@
 """
 Abstract base class for ND image storage reading and writing
+
+Terminiology:
+- axis: a dimension of the data, e.g. 'channel', 'z', 'time'
+- position: the index of a particular axis, e.g. 0, 1, 2, 3
+- image_coordinates: a dictionary of axis names and their positions, e.g. {'channel': 0, 'z': 1, 'time': 2}
+- image_key: a frozenset of image_coordinates, e.g. frozenset({'channel': 0, 'z': 1, 'time': 2})
+- image_keys: a list of image_keys, e.g. [frozenset({'channel': 0, 'z': 1, 'time': 2}), frozenset({'channel': 0, 'z': 1, 'time': 3})]
 """
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Union, Tuple
@@ -28,20 +35,11 @@ def _get_axis_order_key(dict_item):
     else:
         return 3  # stack next to channel axes
 
-
-class NDStorage(ABC):
+class NDStorageAPI(ABC):
     """
-    Terminiology:
-    - axis: a dimension of the data, e.g. 'channel', 'z', 'time'
-    - position: the index of a particular axis, e.g. 0, 1, 2, 3
-    - image_coordinates: a dictionary of axis names and their positions, e.g. {'channel': 0, 'z': 1, 'time': 2}
-    - image_key: a frozenset of image_coordinates, e.g. frozenset({'channel': 0, 'z': 1, 'time': 2})
-    - image_keys: a list of image_keys, e.g. [frozenset({'channel': 0, 'z': 1, 'time': 2}), frozenset({'channel': 0, 'z': 1, 'time': 3})]
-
+    API for NDStorage classes
     """
-
     def __init__(self):
-        self._string_axes_values = {}
         # a dictionary of the types (int or str) of each axis
         # {'channel': str, 'z': int, 'time': int}
         self.axes_types = {}
@@ -50,6 +48,241 @@ class NDStorage(ABC):
         # e.g. {'time': SortedSet([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])}
         self.axes = {}
 
+        # Metadata that applies to the entire dataset
+        self.summary_metadata = None
+
+    @abstractmethod
+    def has_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,
+                  position: int = None, row: int = None, column: int = None,
+                  **kwargs: Union[int, str]) -> bool:
+        """
+        Check if this image is present in the dataset.
+
+        Parameters
+        ----------
+        channel : int or str, optional
+            Integer index or string name of the channel (Default value = None)
+        z : int, optional
+            Index of z slice (Default value = None)
+        time : int, optional
+            Index of the time point (Default value = None)
+        position : int, optional
+            Index of the XY position (Default value = None)
+        row : int, optional
+            Index of tile row for XY tiled datasets (Default value = None)
+        column : int, optional
+            Index of tile column for XY tiled datasets (Default value = None)
+        **kwargs :
+            Names and integer positions of any other axes
+
+        Returns
+        -------
+        bool :
+            Indicates whether the dataset has an image matching the specifications
+        """
+        pass
+
+    @abstractmethod
+    def read_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,
+                   position: int = None, row: int = None, column: int = None,
+                   **kwargs: Union[int, str]) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
+        """
+        Read image data as numpy array.
+
+        Parameters
+        ----------
+        channel : int or str, optional
+            Integer index or string name of the channel (Default value = None)
+        z : int, optional
+            Index of z slice (Default value = None)
+        time : int, optional
+            Index of the time point (Default value = None)
+        position : int, optional
+            Index of the XY position (Default value = None)
+        row : int, optional
+            Index of tile row for XY tiled datasets (Default value = None)
+        column : int, optional
+            Index of tile column for XY tiled datasets (Default value = None)
+        **kwargs :
+            Names and int or str positions of any other axes
+
+        Returns
+        -------
+        image : numpy array
+            Image as a 2D numpy array
+
+        """
+        pass
+
+    @abstractmethod
+    def read_metadata(self, channel: Union[int, str] = None, z: int = None, time: int = None,
+                      position: int = None, row: int = None, column: int = None,
+                      **kwargs: Union[int, str]) -> Dict[str, Any]:
+        """
+        Read metadata only.
+
+        Parameters
+        ----------
+        channel : int or str, optional
+            Integer index or string name of the channel (Default value = None)
+        z : int, optional
+            Index of z slice (Default value = None)
+        time : int, optional
+            Index of the time point (Default value = None)
+        position : int, optional
+            Index of the XY position (Default value = None)
+        row : int, optional
+            Index of tile row for XY tiled datasets (Default value = None)
+        column : int, optional
+            Index of tile col for XY tiled datasets (Default value = None)
+        **kwargs :
+            Names and integer positions of any other axes
+
+        Returns
+        -------
+        metadata : dict
+            Image metadata
+
+        """
+        pass
+
+    @abstractmethod
+    def close(self):
+        """
+        Close the dataset, releasing any resources it holds
+        """
+        pass
+
+    @abstractmethod
+    def get_image_coordinates_list(self) -> List[Dict[str, Union[int, str]]]:
+        """
+        Return a list of the coordinates (e.g. {'channel': 'DAPI', 'z': 0, 'time': 0}) of every image in the dataset
+
+        Returns
+        -------
+        list
+            List of image coordinates
+        """
+        pass
+
+    @abstractmethod
+    def await_new_image(self, timeout=None):
+        """
+        Wait for a new image to arrive in the dataset
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Maximum time to wait in seconds (Default value = None)
+
+        Returns
+        -------
+        bool
+            True if a new image has arrived, False if the timeout was reached
+        """
+        pass
+
+    @abstractmethod
+    def is_finished(self) -> bool:
+        """
+        Check if the dataset is finished and no more images will be added
+        """
+        pass
+
+
+
+    @abstractmethod
+    def as_array(self, axes: List[str] = None, stitched: bool = False,
+                 **kwargs: Union[int, str]) -> 'dask.array':
+        """
+        Create one big Dask array with last two axes as y, x and preceding axes depending on data.
+        If the dataset is saved to disk, the dask array is made up of memory-mapped numpy arrays,
+        so the dataset does not need to be able to fit into RAM.
+        If the data doesn't fully fill out the array (e.g. not every z-slice collected at every time point),
+        zeros will be added automatically.
+
+        To convert data into a numpy array, call np.asarray() on the returned result. However, doing so will bring the
+        data into RAM, so it may be better to do this on only a slice of the array at a time.
+
+        Parameters
+        ----------
+        axes : list, optional
+            List of axes names over which to iterate and merge into a stacked array.
+            If None, all axes will be used in PTCZYX order (Default value = None).
+        stitched : bool, optional
+            If True and tiles were acquired in a grid, lay out adjacent tiles next to one another
+            (Default value = False)
+        **kwargs :
+            Names and integer positions of axes on which to slice data
+
+        Returns
+        -------
+        dataset : dask array
+            Dask array representing the dataset
+        """
+        pass
+
+class WritableNDStorageAPI(NDStorageAPI):
+    """
+    API for NDStorage classes to which images can be written
+    """
+
+    @abstractmethod
+    def put_image(self, coordinates, image, metadata):
+        """
+        Write an image to the dataset
+
+        Parameters
+        ----------
+        coordinates : dict
+            dictionary of axis names and positions
+        image : numpy array
+            image data
+        metadata : dict
+            image metadata
+
+        """
+        pass
+
+    @abstractmethod
+    def finish(self):
+        """
+        No more images will be written to the dataset
+        """
+        pass
+
+    @abstractmethod
+    def initialize(self, summary_metadata: dict):
+        """
+        Initialize the dataset with summary metadata
+        """
+        pass
+
+    @abstractmethod
+    def block_until_finished(self, timeout=None):
+        """
+        Block until the dataset is finished and all images have been written
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Maximum time to wait in seconds (Default value = None)
+
+        Returns
+        -------
+        bool
+            True if the dataset is finished, False if the timeout was reached
+        """
+        pass
+
+
+class NDStorageBase(NDStorageAPI):
+    """
+    Base class with helpful methods for reading and writing ND data
+    """
+    def __init__(self):
+        super().__init__()
+        self._string_axes_values = {}
 
         self.image_width = None
         self.image_height = None
@@ -204,50 +437,6 @@ class NDStorage(ABC):
 
 
     ####### Implementated methods #######
-    def _read_one_image_for_large_array(self, block_id, overlap, full_resolution,
-                                        axes_to_stack=None, axes_to_slice=None, stitched=False, rgb=False):
-        # a function that reads in one chunk of data
-        axes = {key: axes_to_stack[key][block_id[i]] for i, key in enumerate(axes_to_stack.keys())}
-        if stitched:
-            # Combine all rows and cols into one stitched image
-            # get spatial layout of position indices
-            row_values = np.array(list(self.axes["row"]))
-            column_values = np.array(list(self.axes["column"]))
-            # fill in missing values
-            row_values = np.arange(np.min(row_values), np.max(row_values) + 1)
-            column_values = np.arange(np.min(column_values), np.max(column_values) + 1)
-            # make nested list of rows and columns
-            blocks = []
-            for row in row_values:
-                blocks.append([])
-                for column in column_values:
-                    # remove overlap between tiles
-                    if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
-                        blocks[-1].append(self._empty_tile)
-                    else:
-                        tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
-                        # remove half of the overlap around each tile so that that image stitches correctly
-                        # only need this for full resoution because downsampled ones already have the edges removed
-                        if np.any(overlap[0] > 0) and full_resolution:
-                            min_index = np.floor(overlap / 2).astype(np.int_)
-                            max_index = np.ceil(overlap / 2).astype(np.int_)
-                            tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
-                        blocks[-1].append(tile)
-
-            if rgb:
-                image = np.concatenate([np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
-                        for row in blocks],  axis=0)
-            else:
-                image = np.array(da.block(blocks))
-        else:
-            if not self.has_image(**axes, **axes_to_slice):
-                image = self._empty_tile
-            else:
-                image = self.read_image(**axes, **axes_to_slice)
-        for i in range(len(axes_to_stack.keys())):
-            image = image[None]
-        return image
-
     def as_array(self, axes: List[str] = None, stitched: bool = False,
                  **kwargs: Union[int, str]) -> 'dask.array':
         """
@@ -335,7 +524,49 @@ class NDStorage(ABC):
 
         return array
 
+    def _read_one_image_for_large_array(self, block_id, overlap, full_resolution,
+                                        axes_to_stack=None, axes_to_slice=None, stitched=False, rgb=False):
+        # a function that reads in one chunk of data
+        axes = {key: axes_to_stack[key][block_id[i]] for i, key in enumerate(axes_to_stack.keys())}
+        if stitched:
+            # Combine all rows and cols into one stitched image
+            # get spatial layout of position indices
+            row_values = np.array(list(self.axes["row"]))
+            column_values = np.array(list(self.axes["column"]))
+            # fill in missing values
+            row_values = np.arange(np.min(row_values), np.max(row_values) + 1)
+            column_values = np.arange(np.min(column_values), np.max(column_values) + 1)
+            # make nested list of rows and columns
+            blocks = []
+            for row in row_values:
+                blocks.append([])
+                for column in column_values:
+                    # remove overlap between tiles
+                    if not self.has_image(**axes, **axes_to_slice, row=row, column=column):
+                        blocks[-1].append(self._empty_tile)
+                    else:
+                        tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
+                        # remove half of the overlap around each tile so that that image stitches correctly
+                        # only need this for full resoution because downsampled ones already have the edges removed
+                        if np.any(overlap[0] > 0) and full_resolution:
+                            min_index = np.floor(overlap / 2).astype(np.int_)
+                            max_index = np.ceil(overlap / 2).astype(np.int_)
+                            tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
+                        blocks[-1].append(tile)
 
+            if rgb:
+                image = np.concatenate([np.concatenate(row, axis=len(blocks[0][0].shape) - 2)
+                        for row in blocks],  axis=0)
+            else:
+                image = np.array(da.block(blocks))
+        else:
+            if not self.has_image(**axes, **axes_to_slice):
+                image = self._empty_tile
+            else:
+                image = self.read_image(**axes, **axes_to_slice)
+        for i in range(len(axes_to_stack.keys())):
+            image = image[None]
+        return image
 
     ####### Private methods #######
 
@@ -435,42 +666,3 @@ class NDStorage(ABC):
                 axis_positions[axis_name] = self._string_axes_values[axis_name][axis_positions[axis_name]]
 
         return axis_positions
-
-
-class WritableNDStorage(NDStorage):
-    """
-    Additional methods for NDStorage that allow writing data
-    """
-
-    @abstractmethod
-    def put_image(self, coordinates, image, metadata):
-        """
-        Write an image to the dataset
-
-        Parameters
-        ----------
-        coordinates : dict
-            dictionary of axis names and positions
-        image : numpy array
-            image data
-        metadata : dict
-            image metadata
-
-        """
-        pass
-
-    @abstractmethod
-    def finish(self):
-        """
-        No more images will be written to the dataset
-        """
-        pass
-
-    @abstractmethod
-    def initialize(self, summary_metadata: dict):
-        pass
-
-    @abstractmethod
-    def block_until_finished(self, timeout=None):
-        pass
-

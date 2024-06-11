@@ -1,10 +1,10 @@
 from typing import List, Dict, Union
 
 import threading
-from ndtiff.ndstorage_base import WritableNDStorage
+from ndtiff.ndstorage_base import WritableNDStorageAPI, NDStorageBase
 
 
-class NDRAMDataset(WritableNDStorage):
+class NDRAMDataset(NDStorageBase, WritableNDStorageAPI):
     """
     A class for holding data in RAM
     Implements the methods needed to be a DataSink for AcqEngPy
@@ -20,7 +20,7 @@ class NDRAMDataset(WritableNDStorage):
         self.summary_metadata = summary_metadata
 
     def block_until_finished(self, timeout=None):
-        self._finished_event.wait(timeout=timeout)
+        return self._finished_event.wait(timeout=timeout)
 
     def finish(self):
         self._finished_event.set()

@@ -13,9 +13,9 @@ from ndtiff.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
 from ndtiff.ndtiff_file import SingleNDTiffWriter, MAJOR_VERSION, MINOR_VERSION
 
-from ndtiff.ndstorage_base import WritableNDStorage
+from ndtiff.ndstorage_base import WritableNDStorageAPI, NDStorageBase
 
-class NDTiffDataset(WritableNDStorage):
+class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
     """
     Class that opens a single NDTiff dataset
     """
@@ -219,7 +219,7 @@ class NDTiffDataset(WritableNDStorage):
         self._summary_metadata = summary_metadata
 
     def block_until_finished(self, timeout=None):
-        self._finished_event.wait(timeout=timeout)
+        return self._finished_event.wait(timeout=timeout)
 
     def get_image_coordinates_list(self):
         frozen_set_list = list(self.index.keys())
