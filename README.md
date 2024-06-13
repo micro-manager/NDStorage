@@ -16,6 +16,29 @@ from ndtiff import Dataset
 data = Dataset('/path/to/data')
 ```
 
+or to write a new dataset:
+
+```python
+import numpy as np
+from ndtiff import NDTiffDataset
+
+summary_metadata = {'name_1': 123, 'name_2': 'something else'} # make this whatever you want
+dataset = NDTiffDataset('your/data/path', summary_metadata=summary_metadata, writable=True)
+
+image_height = 256
+image_width = 256
+
+for time in range(10):
+    # generate random image
+    pixels = np.random.randint(0, 2 ** 16, (image_height, image_width), dtype=np.uint16)
+    
+    image_coordinates = {'time': time, 'other_axis_name': 4} # this can be whatever you want
+    image_metadata = {'name_1': 123, 'name_2': 'something'} # whatever you want
+    dataset.put_image(image_coordinates, pixels, image_metadata)
+
+dataset.finish()
+```
+
 ## Rationale
 The NDTiff library is optimized for size, speed, and flexibility. Several optimizations are in place to achieve high-performance in each category.
 

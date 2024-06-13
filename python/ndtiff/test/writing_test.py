@@ -3,6 +3,7 @@ import os
 import shutil
 from ndtiff.ndtiff_file import SingleNDTiffWriter, SingleNDTiffReader
 from ndtiff.ndtiff_dataset import NDTiffDataset
+from ndtiff.ndram_dataset import NDRAMDataset
 import pytest
 
 @pytest.fixture(scope="function")
@@ -39,7 +40,7 @@ def test_write_full_dataset(test_data_path):
     Write an NDTiff dataset and read it back in, testing pixels and metadata
     """
     full_path = os.path.join(test_data_path, 'test_write_full_dataset')
-    dataset = NDTiffDataset(full_path, summary_metadata={})
+    dataset = NDTiffDataset(full_path, summary_metadata={}, writable=True)
 
     image_height = 256
     image_width = 256
@@ -51,7 +52,7 @@ def test_write_full_dataset(test_data_path):
         axes = {'time': time}
         dataset.put_image(axes, images[time], {'time_metadata': time})
 
-    dataset.finished_writing()
+    dataset.finish()
 
     # read the file back in
     dataset = NDTiffDataset(full_path)
@@ -61,5 +62,28 @@ def test_write_full_dataset(test_data_path):
         read_image = dataset.read_image(**axes)
         assert np.all(read_image == pixels)
         assert dataset.read_metadata(**axes) == {'time_metadata': time}
+
+def test_write_full_dataset_RAM():
+    dataset = NDRAMDataset()
+
+    image_height = 256
+    image_width = 256
+    images = []
+    for time in range(10):
+        pixels = np.ones(image_height * image_width, dtype=np.uint16).reshape((image_height, image_width)) * time
+        images.append(pixels)
+    for time in range(10):
+        axes = {'time': time}
+        dataset.put_image(axes, images[time], {'time_metadata': time})
+
+    dataset.finish()
+
+    for time in range(10):
+        pixels = np.ones(image_height * image_width, dtype=np.uint16).reshape((image_height, image_width)) * time
+        axes = {'time': time}
+        read_image = dataset.read_image(**axes)
+        assert np.all(read_image == pixels)
+        assert dataset.read_metadata(**axes) == {'time_metadata': time}
+
 
 
