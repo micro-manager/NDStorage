@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'micro-manager/NDTiffStorage' }}
+    if: ${{ github.repository == 'micro-manager/NDStorage' }}
     steps:
     - uses: actions/checkout@v2
     - name: Install Python
