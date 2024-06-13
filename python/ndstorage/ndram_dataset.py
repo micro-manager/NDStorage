@@ -30,6 +30,7 @@ class NDRAMDataset(NDStorageBase, WritableNDStorageAPI):
 
     def put_image(self, coordinates, image, metadata):
         key = frozenset(coordinates.items())
+        self._infer_image_properties(image)
         self.images[key] = image
         self.image_metadata[key] = metadata
         self._update_axes(coordinates)
