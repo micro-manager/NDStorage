@@ -7,8 +7,8 @@ import struct
 import warnings
 from collections import OrderedDict
 from io import BytesIO
-from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
-from ndtiff.ndtiff_index import NDTiffIndexEntry
+from ndstorage.file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from ndstorage.ndtiff_index import NDTiffIndexEntry
 
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
