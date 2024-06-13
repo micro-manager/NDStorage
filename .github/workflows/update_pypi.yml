@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths: 
-      - 'python/ndtiff/_version.py'
+      - 'python/ndstorage/_version.py'
 jobs:
   deploy:
     runs-on: ubuntu-latest
