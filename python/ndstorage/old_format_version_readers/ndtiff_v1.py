@@ -8,7 +8,7 @@ import json
 import dask.array as da
 import warnings
 import struct
-from ndtiff.file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from ndstorage.file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 class _MultipageTiffReader:
     # Class corresponsing to a single multipage tiff file in a Micro-Magellan dataset. Pass the full path of the TIFF to

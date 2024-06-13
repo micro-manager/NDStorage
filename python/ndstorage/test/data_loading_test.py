@@ -1,5 +1,5 @@
 import numpy as np
-from ndtiff import Dataset
+from ndstorage import Dataset
 import os
 
 

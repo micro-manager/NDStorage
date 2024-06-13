@@ -1,5 +1,5 @@
 import numpy as np
-from ndtiff import Dataset, file_io
+from ndstorage import Dataset, file_io
 import os
 import pytest
 from typing import List

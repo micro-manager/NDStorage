@@ -1,7 +1,7 @@
 from typing import List, Dict, Union
 
 import threading
-from ndtiff.ndstorage_base import WritableNDStorageAPI, NDStorageBase
+from ndstorage.ndstorage_base import WritableNDStorageAPI, NDStorageBase
 
 
 class NDRAMDataset(NDStorageBase, WritableNDStorageAPI):
