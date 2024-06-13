@@ -1,1 +1,1 @@
-Python reader for NDTiff files
+Here lives the Python `ndstorage` package, containing both the python implementations for reading/writing NDTiff, as well as the API that should be implemented by other NDStorage classes

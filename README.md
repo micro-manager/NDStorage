@@ -1,18 +1,20 @@
-[![License](https://img.shields.io/pypi/l/ndtiff.svg)](https://github.com/micro-manager/ndtiff/raw/master/LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/ndtiff.svg)](https://pypi.org/project/ndtiff)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/ndtiff.svg)](https://pypistats.org/packages/ndtiff)
+[![License](https://img.shields.io/pypi/l/ndstorage.svg)](https://github.com/micro-manager/ndstorage/raw/master/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/ndstorage.svg)](https://pypi.org/project/ndstorage)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/ndstorage.svg)](https://pypistats.org/packages/ndstorage)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7065552.svg)](https://doi.org/10.5281/zenodo.7065552) (Test datasets)
 
 
-# NDTiffStorage
-NDTiffStorage is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Pycro-Manager](https://github.com/micro-manager/pycro-manager) and [Micro-Magellan](https://micro-manager.org/wiki/MicroMagellan) and is one of three available options in Micro-Manager. This repository contains Java code for reading/writing these files, as well as python code (the [`ndtiff`](https://pypi.org/project/ndtiff/) package) for reading them. Instructions on how to use the python readers can be found in the [Pycro-Manager documentation](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data).
+# NDStorage
+This repository contains APIs for storing and retrieving image datasets indexed along N-dimensional axes (e.g. time, channel, x, y, z, etc). It also contains two implementations of such N-dimensional data storage packages: `NDRAM` and `NDTiff`. `NDRAM` is simply an in-memory storage for image data that implements the NDStorage API. 
 
-Briefly, they are:
+NDTiff is a file format for storing image data and metadata in a series of TIFF files, designed to scale to multi-Terabyte datasets collected at high speeds. It is the default saving format for [Pycro-Manager](https://github.com/micro-manager/pycro-manager) and one of three available options in Micro-Manager. This repository contains Python and Java code for reading/writing these files. Instructions on how to use the python readers can be found in the [Pycro-Manager documentation](https://pycro-manager.readthedocs.io/en/latest/apis.html#reading-acquired-data).
+
+Briefly, reading ndtiff datasets can be performed with:
 ```
-pip install ndtiff
+pip install ndstorage
 ```
 ```python
-from ndtiff import Dataset
+from ndstorage import Dataset
 data = Dataset('/path/to/data')
 ```
 
@@ -20,7 +22,7 @@ or to write a new dataset:
 
 ```python
 import numpy as np
-from ndtiff import NDTiffDataset
+from ndstorage import NDTiffDataset
 
 summary_metadata = {'name_1': 123, 'name_2': 'something else'} # make this whatever you want
 dataset = NDTiffDataset('your/data/path', summary_metadata=summary_metadata, writable=True)
@@ -32,36 +34,37 @@ for time in range(10):
     # generate random image
     pixels = np.random.randint(0, 2 ** 16, (image_height, image_width), dtype=np.uint16)
     
-    image_coordinates = {'time': time, 'other_axis_name': 4} # this can be whatever you want
+    # a dict with strings as keys and strings or ints as values that uniquely identifies this image
+    image_coordinates = {'time': time, 'other_axis_name': 4} 
     image_metadata = {'name_1': 123, 'name_2': 'something'} # whatever you want
     dataset.put_image(image_coordinates, pixels, image_metadata)
 
 dataset.finish()
 ```
 
-## Rationale
-The NDTiff library is optimized for size, speed, and flexibility. Several optimizations are in place to achieve high-performance in each category.
+## Support for Cloud-based IO
+The python `ndstorage` package supports IO to cloud services (i.e. AWS s3) via thr `file_io` submodule.
+you will need to provide your own file interface methods (or use those from other packages i.e. `boto3`), in the following way:
+```
+from _your_custom_storage_module_ import storage
+import ndstorage
+
+file_io = ndstorage.file_io.NDTiffFileIO(open_function=storage.open,
+                                      listdir_function=storage.listdir,
+                                      path_join_function=storage.pathjoin, 
+                                      isdir_function=storage.isdir)
+
+dset = ndstorage.Dataset("s3://bucket_name/path/to/your/dataset", file_io=file_io)
+```
+
+## Rationale for NDTiff
+The NDTiff format is optimized for size, speed, and flexibility. Several optimizations are in place to achieve high-performance in each category.
 
 **Size**. In a traditional TIFF, the locations of the pixels of each image are stored in headers (called "Image File Directories") that are dispersed throughout the file. The leads to major performance bottlenecks on large files, since identifying the location of a particular image may require scanning through many headers dispersed throughout the file. To avoid this limitation, NDTiff writes a separate `NDTiff.index` which contains the locations an essential metadata of each image over one or more TIFF files. This enables the entire dataset to be queried and individual images retrieved extremely quickly. Because of presence of this index, the native TIFF headers are not strictly necessary, however, they do allow the datasets to be opened (less efficiently) by standard TIFF readers, as well as recovery mechanism in case of loss of the index file.
 
 **Speed**. One of the major performance bottlenecks for streaming data to disk at high speeds is the creation of new files. Each time this happens, there is a performance penalty from making operating system calls. Thus, speed can be increased by putting many images into the same file. NDTiff uses individual TIFFs of 4GB apiece (the maximum allowable TIFF size), along with many internal optimizations to increase the speed with which data can be written.
 
 **Flexibility**. NDTiff does not assume any particular model of the dataset, aside from the fact that it can be broken into multiple 2D images. Each 2D image is indexed by a position along one or more axes (e.g. `{'time': 1, 'channel': 2}`). The choice of number of axes is arbitrary and up to the user. This means the format can equally well store many modalities that use multiple images including 3D data, time series, hyperspectral data, high-dynamic range, etc.
-
-## Support for Cloud-based IO
-The python `ndtiff` package supports IO to cloud services (i.e. AWS s3) via thr `file_io` submodule.
-you will need to provide your own file interface methods (or use those from other packages i.e. `boto3`), in the following way:
-```
-from _your_custom_storage_module_ import storage
-import ndtiff
-
-file_io = ndtiff.file_io.NDTiffFileIO(open_function=storage.open,
-                                      listdir_function=storage.listdir,
-                                      path_join_function=storage.pathjoin, 
-                                      isdir_function=storage.isdir)
-
-dset = ndtiff.Dataset("s3://bucket_name/path/to/your/dataset", file_io=file_io)
-```
 
 
 
