@@ -80,7 +80,8 @@ jobs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "NDStorage-Bot"
         git config pull.rebase false
-        python build_automation/update_dependency.py NDStorage
+        # this is the jar name
+        python build_automation/update_dependency.py NDTiffStorage 
         # Now bump version of PycroManagerJava.jar to reflect its updated dependency
         pip install semantic_version
         python build_automation/update_PycroManagerJava.py
@@ -94,7 +95,7 @@ jobs:
         git push origin --delete ndstorage-update 2>/dev/null || true
         
         git checkout -b ndstorage-update
-        git commit -am "update NDStorage version and PycroManagerJava version (Created by Github action)"
+        git commit -am "update NDTiffStorage version and PycroManagerJava version (Created by Github action)"
         
     - name: push
       run: |
