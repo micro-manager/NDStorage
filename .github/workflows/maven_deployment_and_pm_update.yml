@@ -17,7 +17,7 @@ jobs:
   maven-deploy:
     name: Maven deploy to Sonatype OSS
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'micro-manager/NDTiffStorage' }}
+    if: ${{ github.repository == 'micro-manager/NDStorage' }}
 
     steps:
       - uses: actions/checkout@v3
@@ -67,11 +67,11 @@ jobs:
         repository: micro-manager/pycro-manager
         token: ${{ steps.get_workflow_token.outputs.token }}
         
-    - name: Checkout-NDTiff
+    - name: Checkout-NDStorage
       uses: actions/checkout@v3
       with:
-        path: 'NDTiffStorage'
-        repository: micro-manager/NDTiffStorage
+        path: 'NDStorage'
+        repository: micro-manager/NDStorage
         token: ${{ steps.get_workflow_token.outputs.token }}
         
     - name: update-version
@@ -80,7 +80,7 @@ jobs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "NDStorage-Bot"
         git config pull.rebase false
-        python build_automation/update_dependency.py NDTiffStorage
+        python build_automation/update_dependency.py NDStorage
         # Now bump version of PycroManagerJava.jar to reflect its updated dependency
         pip install semantic_version
         python build_automation/update_PycroManagerJava.py
@@ -90,16 +90,16 @@ jobs:
       run: |
         cd pycro-manager
         # delete any errant existing version of the update branch
-        git branch -D ndtiff-update 2>/dev/null || true
-        git push origin --delete ndtiff-update 2>/dev/null || true
+        git branch -D ndstorage-update 2>/dev/null || true
+        git push origin --delete ndstorage-update 2>/dev/null || true
         
-        git checkout -b ndtiff-update
-        git commit -am "update NDTiffStorage version and PycroManagerJava version (Created by Github action)"
+        git checkout -b ndstorage-update
+        git commit -am "update NDStorage version and PycroManagerJava version (Created by Github action)"
         
     - name: push
       run: |
         cd pycro-manager
-        git push --set-upstream origin ndtiff-update
+        git push --set-upstream origin ndstorage-update
         
         
     - name: create pull request
@@ -109,7 +109,7 @@ jobs:
         
       run: |
         cd pycro-manager
-        PR_URL=$(gh pr create -H ndtiff-update -B main --title 'Java dependency auto-update' --body 'Created by Github action')
+        PR_URL=$(gh pr create -H ndstorage-update -B main --title 'Java dependency auto-update' --body 'Created by Github action')
 
         echo "Created pull request $PR_URL"
         
@@ -134,6 +134,6 @@ jobs:
         
         # Now it is safe to assume its in the nightly builds
         # delete the branch created for sending in the update
-        git push origin --delete ndtiff-update
+        git push origin --delete ndstorage-update
 
         
