@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.function.Consumer;
@@ -17,8 +18,8 @@ public class NDRAMStorage implements NDTiffAPI {
 
    private boolean finished_ = false;
 
-   private HashMap<HashMap<String, Object>, Object> images_ = new HashMap<HashMap<String, Object>, Object>();
-   private HashMap<HashMap<String, Object>, JSONObject> metadata_ = new HashMap<HashMap<String, Object>, JSONObject>();
+   private ConcurrentHashMap<HashMap<String, Object>, Object> images_ = new ConcurrentHashMap<HashMap<String, Object>, Object>();
+   private ConcurrentHashMap<HashMap<String, Object>, JSONObject> metadata_ = new ConcurrentHashMap<HashMap<String, Object>, JSONObject>();
 
    private boolean rgb_;
     private int bitDepth_;
