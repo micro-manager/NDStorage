@@ -276,6 +276,8 @@ class SingleNDTiffWriter:
                 return len(pixels)
             elif isinstance(pixels, np.ndarray) and pixels.dtype == np.uint16:
                 return pixels.size * 2
+            elif isinstance(pixels, np.ndarray) and pixels.dtype == np.uint8:
+                return pixels.size
             else:
                 raise RuntimeError("unknown pixel type")
 
