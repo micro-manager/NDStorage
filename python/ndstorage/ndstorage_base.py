@@ -329,7 +329,7 @@ class NDStorageBase(NDStorageAPI):
     @abstractmethod
     def read_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,
                    position: int = None, row: int = None, column: int = None,
-                   **kwargs: Union[int, str]) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
+                   **kwargs: Union[int, str]) -> np.ndarray:
         """
         Read image data as numpy array.
 
