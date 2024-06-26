@@ -162,6 +162,8 @@ class SingleNDTiffWriter:
         ied = self._write_ifd(index_key, pixels, metadata, rgb, image_height, image_width, bit_depth)
         while self.buffers:
             self.file.write(self.buffers.popleft())
+        # make sure the file is flushed to disk
+        self.file.flush()
         self.index_map[index_key] = ied
         return ied
 

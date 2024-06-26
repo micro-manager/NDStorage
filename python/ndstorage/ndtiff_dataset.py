@@ -33,7 +33,8 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
         file_io: ndtiff.file_io.NDTiffFileIO
             A container containing various methods for interacting with files.
         summary_metadata : dict
-            Summary metadata for a dataset that is currently being written by another process
+            Summary metadata for a dataset that is currently being written by another process. If writable is True,
+            this should instead be provided by the initialize() method.
         name : str
             Name of the dataset if writing a new dataset
         writable : bool
