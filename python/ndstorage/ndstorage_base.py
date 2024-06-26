@@ -9,6 +9,7 @@ Terminiology:
 - image_keys: a list of image_keys, e.g. [frozenset({'channel': 0, 'z': 1, 'time': 2}), frozenset({'channel': 0, 'z': 1, 'time': 3})]
 """
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any, Dict, List, Union, Tuple
 import numpy as np
 import dask
@@ -622,7 +623,7 @@ class NDStorageBase(NDStorageAPI):
                 self._string_axes_values[string_axis_name] = []
 
         # if its called on just one image, make it a list of one image
-        if isinstance(image_coordinates, dict):
+        if isinstance(image_coordinates, Mapping):
             image_coordinates = [image_coordinates.items()]
 
         for single_image_coordinates in image_coordinates:
