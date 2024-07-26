@@ -9,6 +9,7 @@ Terminiology:
 - image_keys: a list of image_keys, e.g. [frozenset({'channel': 0, 'z': 1, 'time': 2}), frozenset({'channel': 0, 'z': 1, 'time': 3})]
 """
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any, Dict, List, Union, Tuple
 import numpy as np
 import dask
@@ -329,7 +330,7 @@ class NDStorageBase(NDStorageAPI):
     @abstractmethod
     def read_image(self, channel: Union[int, str] = None, z: int = None, time: int = None,
                    position: int = None, row: int = None, column: int = None,
-                   **kwargs: Union[int, str]) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
+                   **kwargs: Union[int, str]) -> np.ndarray:
         """
         Read image data as numpy array.
 
@@ -622,7 +623,7 @@ class NDStorageBase(NDStorageAPI):
                 self._string_axes_values[string_axis_name] = []
 
         # if its called on just one image, make it a list of one image
-        if isinstance(image_coordinates, dict):
+        if isinstance(image_coordinates, Mapping):
             image_coordinates = [image_coordinates.items()]
 
         for single_image_coordinates in image_coordinates:
@@ -651,18 +652,16 @@ class NDStorageBase(NDStorageAPI):
         Combine all the axes with standard names and custom names into a single dictionary, eliminating
         any None values. Also, convert any string-valued axes passed as ints into strings
         """
-        if ('channel_name' in kwargs):
-            warnings.warn('channel_name is deprecated, use "channel" instead')
-            channel = kwargs['channel_name']
-            del kwargs['channel_name']
-
         axis_positions = {'channel': channel, 'z': z, 'position': position,
                     'time': time, 'row': row, 'column': column, **kwargs}
         # ignore ones that are None
         axis_positions = {n: axis_positions[n] for n in axis_positions.keys() if axis_positions[n] is not None}
         for axis_name in axis_positions.keys():
             # convert any string-valued axes passed as ints into strings
-            if self.axes_types[axis_name] == str and type(axis_positions[axis_name]) == int:
+            if axis_name not in self.axes_types.keys():
+                # can't convert to string if the axis is not known
+                pass
+            elif self.axes_types[axis_name] == str and type(axis_positions[axis_name]) == int:
                 axis_positions[axis_name] = self._string_axes_values[axis_name][axis_positions[axis_name]]
 
         return axis_positions
