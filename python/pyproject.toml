@@ -21,6 +21,13 @@ dynamic = ["version"]
 description = "N-dimensional, multiresolution file format for Micro-Manager"
 readme = "README.md"
 
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
+
 [tool.pytest.ini_options]
 testpaths = [
     "python/ndstorage/test",
