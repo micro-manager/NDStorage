@@ -1,10 +1,10 @@
 import os
-from ndstorage.ndtiff_dataset import NDTiffDataset
-from ndstorage.ndtiff_pyramid_dataset import NDTiffPyramidDataset
-from ndstorage.old_format_version_readers.nd_tiff_v2 import NDTiff_v2_0
-from ndstorage.old_format_version_readers.ndtiff_v1 import NDTiff_v1
+from .ndtiff_dataset import NDTiffDataset
+from .ndtiff_pyramid_dataset import NDTiffPyramidDataset
+from .old_format_version_readers.nd_tiff_v2 import NDTiff_v2_0
+from .old_format_version_readers.ndtiff_v1 import NDTiff_v1
 import numpy as np
-from ndstorage.file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from .file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 class Dataset:
     """

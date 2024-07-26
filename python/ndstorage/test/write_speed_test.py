@@ -1,8 +1,8 @@
 # import numpy as np
 # import os
 # import shutil
-# from ndstorage.ndtiff_file import SingleNDTiffWriter, SingleNDTiffReader
-# from ndstorage.ndtiff_dataset import NDTiffDataset
+# from .ndtiff_file import SingleNDTiffWriter, SingleNDTiffReader
+# from .ndtiff_dataset import NDTiffDataset
 # import pytest
 # import time
 # from tqdm import tqdm
