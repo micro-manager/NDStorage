@@ -12,8 +12,8 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 dependencies = [
-    "numpy"
-    "sortedcontainers"
+    "numpy",
+    "sortedcontainers",
     "dask[array]>=2022.2.0"
 ]
 dynamic = ["version"]
