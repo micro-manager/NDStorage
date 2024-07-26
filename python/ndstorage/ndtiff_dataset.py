@@ -6,14 +6,14 @@ import numpy as np
 import warnings
 import re
 
-from ndstorage.file_io import NDTiffFileIO, BUILTIN_FILE_IO
-from ndstorage.ndtiff_file import SingleNDTiffReader
-from ndstorage.ndtiff_file import _CHANNEL_AXIS
-from ndstorage.ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
+from .file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from .ndtiff_file import SingleNDTiffReader
+from .ndtiff_file import _CHANNEL_AXIS
+from .ndtiff_index import NDTiffIndexEntry, read_ndtiff_index
 
-from ndstorage.ndtiff_file import SingleNDTiffWriter, MAJOR_VERSION, MINOR_VERSION
+from .ndtiff_file import SingleNDTiffWriter, MAJOR_VERSION, MINOR_VERSION
 
-from ndstorage.ndstorage_base import WritableNDStorageAPI, NDStorageBase
+from .ndstorage_base import WritableNDStorageAPI, NDStorageBase
 
 class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
     """

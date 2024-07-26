@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import threading
-from ndstorage.file_io import NDTiffFileIO, BUILTIN_FILE_IO
-from ndstorage.ndtiff_dataset import NDTiffDataset
+from .file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from .ndtiff_dataset import NDTiffDataset
 
 class NDTiffPyramidDataset:
     """Class that opens a single NDTiffStorage multi-resolution pyramid dataset"""

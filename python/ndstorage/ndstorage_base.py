@@ -19,7 +19,7 @@ from functools import partial
 import dask.array as da
 import threading
 
-from ndstorage.ndtiff_file import _POSITION_AXIS, _ROW_AXIS, _COLUMN_AXIS, _Z_AXIS, _TIME_AXIS, _CHANNEL_AXIS
+from .ndtiff_file import _POSITION_AXIS, _ROW_AXIS, _COLUMN_AXIS, _Z_AXIS, _TIME_AXIS, _CHANNEL_AXIS
 
 # Standard order of axes when opening data. Data does not need to be acquired in this order -- this is just a convention
 _AXIS_ORDER = {_ROW_AXIS: 7,
