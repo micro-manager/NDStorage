@@ -25,6 +25,8 @@ jobs:
         cd python
         pip install -e .
     - name: Build package
-      run: flit build
+      run: |
+        cd python
+        flit build
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
