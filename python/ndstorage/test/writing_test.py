@@ -1,9 +1,9 @@
 import numpy as np
 import os
 import shutil
-from .ndtiff_file import SingleNDTiffWriter, SingleNDTiffReader
-from .ndtiff_dataset import NDTiffDataset
-from .ndram_dataset import NDRAMDataset
+from ..ndtiff_file import SingleNDTiffWriter, SingleNDTiffReader
+from ..ndtiff_dataset import NDTiffDataset
+from ..ndram_dataset import NDRAMDataset
 import pytest
 
 @pytest.fixture(scope="function")
