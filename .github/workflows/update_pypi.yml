@@ -24,6 +24,8 @@ jobs:
       run: |
         cd python
         pip install -e .
+    - name: Set PYTHONPATH
+      run: echo "PYTHONPATH=$PYTHONPATH:${{ github.workspace }}/python" >> $GITHUB_ENV
     - name: Build package
       run: |
         cd python
