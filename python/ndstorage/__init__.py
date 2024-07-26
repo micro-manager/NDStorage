@@ -1,7 +1,8 @@
-name = "ndstorage"
+from ._version import __version__, version_info
 
-from ndstorage.ndstorage_base import NDStorageAPI, WritableNDStorageAPI
-from ndstorage._superclass import Dataset
-from ndstorage.ndtiff_dataset import NDTiffDataset
-from ndstorage.ndram_dataset import NDRAMDataset
-from ndstorage.ndtiff_pyramid_dataset import NDTiffPyramidDataset
+
+from .ndstorage_base import NDStorageAPI, WritableNDStorageAPI
+from ._superclass import Dataset
+from .ndtiff_dataset import NDTiffDataset
+from .ndram_dataset import NDRAMDataset
+from .ndtiff_pyramid_dataset import NDTiffPyramidDataset
