@@ -9,7 +9,7 @@ import dask.array as da
 import warnings
 import struct
 import threading
-from .file_io import NDTiffFileIO, BUILTIN_FILE_IO
+from ..file_io import NDTiffFileIO, BUILTIN_FILE_IO
 
 _POSITION_AXIS = "position"
 _ROW_AXIS = "row"
