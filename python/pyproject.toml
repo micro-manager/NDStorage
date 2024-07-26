@@ -1,4 +1,29 @@
+
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "ndstorage"
+authors = [{name = "Henry Pinkard", email = "henry.pinkard.open.source@gmail.com"}]
+license = {file = "LICENSE"}
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "numpy"
+    "sortedcontainers"
+    "dask[array]>=2022.2.0"
+]
+dynamic = ["version"]
+description = "N-dimensional, multiresolution file format for Micro-Manager"
+readme = "README.md"
+
 [tool.pytest.ini_options]
 testpaths = [
     "python/ndstorage/test",
 ]
+
+[project.urls]
+Home = "https://github.com/micro-manager/NDStorage"
