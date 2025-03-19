@@ -174,6 +174,9 @@ class SingleNDTiffWriter:
             self.file.write(b'\0') # should be equivalent
 
         byte_depth = 1 if isinstance(pixels, bytearray) else 2
+        if bit_depth == 8:
+            byte_depth = 1 #isinstance doesen't work?
+            
         bytes_per_image_pixels = self._bytes_per_image_pixels(pixels, rgb)
         num_entries = 13
 
