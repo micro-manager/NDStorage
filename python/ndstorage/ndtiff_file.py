@@ -60,7 +60,7 @@ class SingleNDTiffWriter:
         self.buffers = deque()
         self.first_ifd = True
 
-        if pixel_comepression in [1, 8]:
+        if pixel_compression in [1, 8]:
             self.pixel_compression = pixel_compression
         else:
             raise ValueError("Invalid pixel compression, only 1 (no compression) and 8 (zlib) are supported")
@@ -165,7 +165,7 @@ class SingleNDTiffWriter:
         rgb = pixels.ndim == 3 and pixels.shape[2] == 3
         
         if rgb and pixel_compression in [8]:
-            warnings.warn(f"Pixel compression {pixelo_compression} is not supported for RGB images. Using no compression.")
+            warnings.warn(f"Pixel compression {pixel_compression} is not supported for RGB images. Using no compression.")
             pixel_compression = 1
         if not pixel_compression in [1,8]:
             warnings.warn(f"Invalid pixel compression {pixel_compression}: only 1 (no compression) and 8 (zlib) are supported. Using 1 (no compression).")

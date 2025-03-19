@@ -50,7 +50,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
             self.major_version = MAJOR_VERSION
             self.minor_version = MINOR_VERSION
             self._index_file = None
-            if pixel_compression in[1,8]:
+            if pixel_compression in [1,8]:
                 self._pixel_compression = pixel_compression
             else:
                 raise ValueError("Compression scheme must be 1 (No) or 8 (zlib)")
@@ -180,7 +180,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
         if pixel_compression == 0:
             pixel_compression = self._pixel_compression
         elif not pixel_compression in [1,8]:
-            warnings.warn(f"Pixel compression: only 1 (no compression) and 8 (zlib) are supported. Using {self._pixel_compression}.")
+            warnings.warn(f"Pixel compression {pixel_compression}: only 1 (no compression) and 8 (zlib) are supported. Using {self._pixel_compression}.")
             pixel_compression = self._pixel_compression
 
         # add to write pending images
@@ -210,7 +210,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
             self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata, self._pixel_compression)
             self.file_index += 1
 
-        index_data_entry = self.current_writer.write_image(frozenset(coordinates.items()), image, metadata, pixel_compression)
+        index_data_entry = self.current_writer.write_image(frozenset(coordinates.items()), image, metadata, pixel_compression = pixel_compression)
         # create readers and update axes
         self.add_index_entry(index_data_entry, new_image_updates=False)
         # write the index to disk
