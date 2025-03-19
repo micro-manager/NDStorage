@@ -170,7 +170,8 @@ class SingleNDTiffWriter:
 
     def _write_ifd(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth):
         if self.file.tell() % 2 == 1:
-            self.file.seek(self.file.tell() + 1)  # Make IFD start on word
+            #self.file.seek(self.file.tell() + 1)  # Make IFD start on word
+            self.file.write(b'\0') # should be equivalent
 
         byte_depth = 1 if isinstance(pixels, bytearray) else 2
         bytes_per_image_pixels = self._bytes_per_image_pixels(pixels, rgb)
