@@ -187,12 +187,17 @@ class SingleNDTiffWriter:
 
     def _write_ifd(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth, pixel_compression):
         if self.file.tell() % 2 == 1:
-            #self.file.seek(self.file.tell() + 1)  # Make IFD start on word
-            self.file.write(b'\0') # should be equivalent
+            self.file.seek(self.file.tell() + 1)  # Make IFD start on word
 
-        byte_depth = 1 if isinstance(pixels, bytearray) else 2
-        if bit_depth == 8:
-            byte_depth = 1 #isinstance doesen't work?
+        if isinstance(pixels, bytearray):
+            byte_depth = 1
+        # if the pixel object is a numpy array, it is type of <class 'numpy.ndarray'>
+        # when using np_array.tobytes it is <class 'bytes'>
+        # therefore taking the the bit_depth information "pixels.dtype" into account
+        elif bit_depth == 8:
+            byte_depth = 1
+        else:
+            byte_depth = 2
         
         if pixel_compression == 8:
             compressed_pixels = zlib.compress(pixels)
