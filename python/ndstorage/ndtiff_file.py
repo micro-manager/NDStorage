@@ -5,6 +5,7 @@ import os
 import time
 import struct
 import warnings
+import mmap
 import zlib
 from collections import OrderedDict
 from io import BytesIO
@@ -350,6 +351,8 @@ class SingleNDTiffReader:
         self.file_io = file_io
         self.tiff_path = tiff_path
         self.file = self.file_io.open(tiff_path, "rb")
+        # mmap speeds up random access
+        self.mmap_file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         if summary_md is None:
             self.summary_md, self.first_ifd_offset = self._read_header()
         else:
@@ -359,6 +362,7 @@ class SingleNDTiffReader:
 
     def close(self):
         """ """
+        self.mmap_file.close()
         self.file.close()
 
     def _read_header(self):
@@ -400,8 +404,8 @@ class SingleNDTiffReader:
         """
         convert to python ints
         """
-        self.file.seek(int(start), 0)
-        return self.file.read(end - start)
+        self.mmap_file.seek(int(start), 0)
+        return self.mmap_file.read(end - start)
 
     def read_metadata(self, index):
         return json.loads(

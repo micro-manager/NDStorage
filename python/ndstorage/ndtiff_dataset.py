@@ -272,7 +272,11 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
                 self.index[frozenset(image_coordinates.items())] = index_entry
 
             if index_entry.filename not in self._readers_by_filename:
-                new_reader = SingleNDTiffReader(os.path.join(self.path, index_entry.filename), file_io=self.file_io)
+                # prevent new reader object when writing:
+                if self._writable and self.current_writer.filename.split(os.sep)[-1] == index_entry.filename:
+                    new_reader = self.current_writer.reader
+                else:
+                    new_reader = SingleNDTiffReader(os.path.join(self.path, index_entry.filename), file_io=self.file_io)
                 self._readers_by_filename[index_entry.filename] = new_reader
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version
