@@ -19,6 +19,7 @@ def test_data_path(tmp_path_factory):
     shutil.rmtree(data_path)
 
 # loop for threaded writing
+@pytest.mark.skip(reason="loop for threaded writing")
 def image_write_loop(my_deque: deque, dataset: NDTiffDataset, run_event: threading.Event):
     while run_event.is_set() or len(my_deque) != 0:
         try:

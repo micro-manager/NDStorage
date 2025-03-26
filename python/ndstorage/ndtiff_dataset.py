@@ -170,7 +170,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
 
             return self._do_read_metadata(axes)
 
-    def put_image(self, coordinates, image, metadata):
+    def put_image(self, coordinates, image, metadata, pixel_compression = 0):
         # wait for put_image to finish before calling it again.
         self._put_image_lock.acquire()
         if not self._writable:

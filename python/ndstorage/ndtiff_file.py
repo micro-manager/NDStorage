@@ -160,7 +160,7 @@ class SingleNDTiffWriter:
             The index entry for the image
         """
         if pixel_compression == 0:
-            pixel_compression == self.pixel_compression
+            pixel_compression = self.pixel_compression
         
         image_height, image_width = pixels.shape
         rgb = pixels.ndim == 3 and pixels.shape[2] == 3
