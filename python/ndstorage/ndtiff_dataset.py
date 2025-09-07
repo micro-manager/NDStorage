@@ -21,7 +21,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
     """
 
     def __init__(self, dataset_path=None, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_metadata=None,
-                 name=None, writable=False, **kwargs):
+                 name=None, writable=False, pixel_compression = 1, **kwargs):
         """
         Provides access to an NDTiffStorage dataset,
         either one currently being acquired or one on disk
@@ -44,10 +44,15 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
 
         self.file_io = file_io
         self._lock = threading.RLock()
+        self._put_image_lock = threading.Lock()
         if writable:
             self.major_version = MAJOR_VERSION
             self.minor_version = MINOR_VERSION
             self._index_file = None
+            if pixel_compression in [1,8]:
+                self._pixel_compression = pixel_compression
+            else:
+                raise ValueError("Compression scheme must be 1 (No) or 8 (zlib)")
         if summary_metadata is not None or writable:
             # this dataset is either:
             #   - a view of an active acquisition. Image data is being written by code on the Java side
@@ -165,9 +170,17 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
 
             return self._do_read_metadata(axes)
 
-    def put_image(self, coordinates, image, metadata):
+    def put_image(self, coordinates, image, metadata, pixel_compression = 0):
+        # wait for put_image to finish before calling it again.
+        self._put_image_lock.acquire()
         if not self._writable:
             raise RuntimeError("Cannot write to a read-only dataset")
+
+        if pixel_compression == 0:
+            pixel_compression = self._pixel_compression
+        elif not pixel_compression in [1,8]:
+            warnings.warn(f"Pixel compression {pixel_compression}: only 1 (no compression) and 8 (zlib) are supported. Using {self._pixel_compression}.")
+            pixel_compression = self._pixel_compression
 
         # add to write pending images
         self._write_pending_images[frozenset(coordinates.items())] = (image, metadata)
@@ -184,7 +197,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
             filename = 'NDTiffStack.tif'
             if self.name is not None:
                 filename = self.name + '_' + filename
-            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
+            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata, self._pixel_compression)
             self.file_index += 1
             # create the index file
             self._index_file = open(os.path.join(self.path, "NDTiff.index"), "wb")
@@ -193,16 +206,17 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
             filename = 'NDTiffStack_{}.tif'.format(self.file_index)
             if self.name is not None:
                 filename = self.name + '_' + filename
-            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata)
+            self.current_writer = SingleNDTiffWriter(self.path, filename, self._summary_metadata, self._pixel_compression)
             self.file_index += 1
 
-        index_data_entry = self.current_writer.write_image(frozenset(coordinates.items()), image, metadata)
+        index_data_entry = self.current_writer.write_image(frozenset(coordinates.items()), image, metadata, pixel_compression = pixel_compression)
         # create readers and update axes
         self.add_index_entry(index_data_entry, new_image_updates=False)
         # write the index to disk
         self._index_file.write(index_data_entry.as_byte_buffer().getvalue())
         # remove from pending images
         del self._write_pending_images[frozenset(coordinates.items())]
+        self._put_image_lock.release()
 
     def finish(self):
         if self.current_writer is not None:
@@ -258,7 +272,11 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
                 self.index[frozenset(image_coordinates.items())] = index_entry
 
             if index_entry.filename not in self._readers_by_filename:
-                new_reader = SingleNDTiffReader(os.path.join(self.path, index_entry.filename), file_io=self.file_io)
+                # prevent new reader object when writing:
+                if self._writable and self.current_writer.filename.split(os.sep)[-1] == index_entry.filename:
+                    new_reader = self.current_writer.reader
+                else:
+                    new_reader = SingleNDTiffReader(os.path.join(self.path, index_entry.filename), file_io=self.file_io)
                 self._readers_by_filename[index_entry.filename] = new_reader
                 # Should be the same on every file so resetting them is fine
                 self.major_version, self.minor_version = new_reader.major_version, new_reader.minor_version

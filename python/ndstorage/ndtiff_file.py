@@ -5,6 +5,8 @@ import os
 import time
 import struct
 import warnings
+import mmap
+import zlib
 from collections import OrderedDict
 from io import BytesIO
 from .file_io import NDTiffFileIO, BUILTIN_FILE_IO
@@ -49,7 +51,7 @@ _CHANNEL_AXIS = "channel"
 
 class SingleNDTiffWriter:
 
-    def __init__(self, directory, filename, summary_md):
+    def __init__(self, directory, filename, summary_md, pixel_compression = 1):
         self.filename = os.path.join(directory, filename)
         self.index_map = {}
         self.next_ifd_offset_location = -1
@@ -59,10 +61,15 @@ class SingleNDTiffWriter:
         self.buffers = deque()
         self.first_ifd = True
 
-        self.start_time = None
+        if pixel_compression in [1, 8]:
+            self.pixel_compression = pixel_compression
+        else:
+            raise ValueError("Invalid pixel compression, only 1 (no compression) and 8 (zlib) are supported")
 
+        self.start_time = None
+        
         os.makedirs(directory, exist_ok=True)
-        # pre-allocate the file
+        # pre-allocate the file 
         file_path = os.path.join(directory, filename)
         with open(file_path, 'wb') as f:
             f.seek(MAX_FILE_SIZE - 1)
@@ -132,12 +139,12 @@ class SingleNDTiffWriter:
         self.file.write(buffer)
         self.file.seek(current_pos)
 
-    def write_image(self, index_key, pixels, metadata, bit_depth='auto'):
+    def write_image(self, index_key, pixels, metadata, bit_depth='auto', pixel_compression = 0):
         """
         Write an image to the file
 
         Parameters
-        ----------
+        ----------  
         index_key : frozenset
             The key to index the image
         pixels : np.ndarray or bytearray
@@ -152,14 +159,25 @@ class SingleNDTiffWriter:
         NDTiffIndexEntry
             The index entry for the image
         """
+        if pixel_compression == 0:
+            pixel_compression = self.pixel_compression
+        
         image_height, image_width = pixels.shape
         rgb = pixels.ndim == 3 and pixels.shape[2] == 3
+        
+        if rgb and pixel_compression in [8]:
+            warnings.warn(f"Pixel compression {pixel_compression} is not supported for RGB images. Using no compression.")
+            pixel_compression = 1
+        if not pixel_compression in [1,8]:
+            warnings.warn(f"Invalid pixel compression {pixel_compression}: only 1 (no compression) and 8 (zlib) are supported. Using 1 (no compression).")
+            pixel_compression = 1
+        
         if bit_depth == 'auto':
             bit_depth = 8 if pixels.dtype == np.uint8 else 16
         # if metadata is a dict, serialize it to a json string and make it a utf8 byte buffer
         if isinstance(metadata, dict):
             metadata = self._get_bytes_from_string(json.dumps(metadata))
-        ied = self._write_ifd(index_key, pixels, metadata, rgb, image_height, image_width, bit_depth)
+        ied = self._write_ifd(index_key, pixels, metadata, rgb, image_height, image_width, bit_depth, pixel_compression)
         while self.buffers:
             self.file.write(self.buffers.popleft())
         # make sure the file is flushed to disk
@@ -168,12 +186,26 @@ class SingleNDTiffWriter:
         return ied
 
 
-    def _write_ifd(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth):
+    def _write_ifd(self, index_key, pixels, metadata, rgb, image_height, image_width, bit_depth, pixel_compression):
         if self.file.tell() % 2 == 1:
             self.file.seek(self.file.tell() + 1)  # Make IFD start on word
 
-        byte_depth = 1 if isinstance(pixels, bytearray) else 2
-        bytes_per_image_pixels = self._bytes_per_image_pixels(pixels, rgb)
+        if isinstance(pixels, bytearray):
+            byte_depth = 1
+        # if the pixel object is a numpy array, it is type of <class 'numpy.ndarray'>
+        # when using np_array.tobytes it is <class 'bytes'>
+        # therefore taking the the bit_depth information "pixels.dtype" into account
+        elif bit_depth == 8:
+            byte_depth = 1
+        else:
+            byte_depth = 2
+        
+        if pixel_compression == 8:
+            compressed_pixels = zlib.compress(pixels)
+            bytes_per_image_pixels = len(compressed_pixels)
+        else:
+            bytes_per_image_pixels = self._bytes_per_image_pixels(pixels, rgb)
+        
         num_entries = 13
 
         # 2 bytes for number of directory entries, 12 bytes per directory entry, 4 byte offset of next IFD
@@ -202,7 +234,7 @@ class SingleNDTiffWriter:
         buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, HEIGHT, 4, 1, image_height, buffer_position)
         buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, BITS_PER_SAMPLE, 3, 3 if rgb else 1,
                                                  bits_per_sample_offset if rgb else byte_depth * 8, buffer_position)
-        buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, COMPRESSION, 3, 1, 1, buffer_position)
+        buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, COMPRESSION, 3, 1, pixel_compression, buffer_position)
         buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, PHOTOMETRIC_INTERPRETATION, 3, 1,
                                                  2 if rgb else 1, buffer_position)
         buffer_position += self._write_ifd_entry(ifd_and_small_vals_buffer, STRIP_OFFSETS, 4, 1, pixel_data_offset,
@@ -235,7 +267,10 @@ class SingleNDTiffWriter:
         buffer_position += 8
 
         self.buffers.append(ifd_and_small_vals_buffer)
-        self.buffers.append(self._get_pixel_buffer(pixels, rgb))
+        if pixel_compression in [8]:
+            self.buffers.append(compressed_pixels)
+        else:
+            self.buffers.append(self._get_pixel_buffer(pixels, rgb))
         self.buffers.append(metadata)
 
         self.first_ifd = False
@@ -251,7 +286,7 @@ class SingleNDTiffWriter:
         }.get(bit_depth, NDTiffIndexEntry.EIGHT_BIT_RGB if rgb else None)
 
         return NDTiffIndexEntry(index_key, pixel_type, pixel_data_offset, image_width, image_height, metadata_offset,
-                                len(metadata), self.filename.split(os.sep)[-1])
+                                len(metadata), self.filename.split(os.sep)[-1], pixel_compression)
 
     def _write_ifd_entry(self, buffer, tag, dtype, count, value, buffer_position):
         struct.pack_into('<HHII', buffer, buffer_position, tag, dtype, count, value)
@@ -300,6 +335,8 @@ class SingleNDTiffReader:
     FOURTEEN_BIT_MONOCHROME = 5
     ELEVEN_BIT_MONOCHROME = 6
 
+    ZLIB_COMPRESSED = 8
+    NO_COMPRESSION = 1
     UNCOMPRESSED = 0
 
     def __init__(self, tiff_path, file_io: NDTiffFileIO = BUILTIN_FILE_IO, summary_md=None):
@@ -314,6 +351,8 @@ class SingleNDTiffReader:
         self.file_io = file_io
         self.tiff_path = tiff_path
         self.file = self.file_io.open(tiff_path, "rb")
+        # mmap speeds up random access
+        self.mmap_file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         if summary_md is None:
             self.summary_md, self.first_ifd_offset = self._read_header()
         else:
@@ -323,6 +362,7 @@ class SingleNDTiffReader:
 
     def close(self):
         """ """
+        self.mmap_file.close()
         self.file.close()
 
     def _read_header(self):
@@ -364,8 +404,8 @@ class SingleNDTiffReader:
         """
         convert to python ints
         """
-        self.file.seek(int(start), 0)
-        return self.file.read(end - start)
+        self.mmap_file.seek(int(start), 0)
+        return self.mmap_file.read(end - start)
 
     def read_metadata(self, index):
         return json.loads(
@@ -393,6 +433,8 @@ class SingleNDTiffReader:
         width = index_entry.image_width
         height = index_entry.image_height
         data = self._read(index_entry.pix_offset, index_entry.pix_offset + width * height * bytes_per_pixel)
+        if index_entry.pixel_compression == self.ZLIB_COMPRESSED:
+            data = zlib.decompress(data)
         pixels = np.frombuffer(data, dtype=dtype)
         image = pixels.reshape([height, width, 3] if bytes_per_pixel == 3 else [height, width])
         return image
