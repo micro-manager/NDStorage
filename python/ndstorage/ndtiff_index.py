@@ -138,7 +138,7 @@ class NDTiffIndexEntry:
 
     def as_byte_buffer(self):
         axes = {axis_name: position for axis_name, position in self.axes_key}
-        axes_key_bytes = json.dumps(axes).encode('utf-8')
+        axes_key_bytes = NDTiffIndexEntry.serialize_axes(axes).encode('utf-8')
         filename_bytes = self.filename.encode('utf-8')
 
         buffer = BytesIO()
