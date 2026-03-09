@@ -45,10 +45,10 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import javax.swing.JOptionPane;
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
+import javax.swing.JOptionPane;
 
 
 /**
@@ -263,8 +263,24 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          yOverlap_ = StorageMD.getPixelOverlapY(summaryMD_);
          tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
          tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
-         // Don't load existing low-res storages — they will be rebuilt on demand
-         // by increaseMaxResolutionLevel when the viewer zooms out.
+         // Load existing low-res storages so they are not overwritten when new levels are added
+         int resIndex = 1;
+         while (true) {
+            String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
+                    + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+            File dsDirFile = new File(dsDir);
+            if (!dsDirFile.exists()) {
+               break;
+            }
+            try {
+               lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false, null, this, null));
+               maxResolutionLevel_ = resIndex;
+            } catch (Exception e) {
+               // Incomplete or corrupt downsample directory; stop here — will be rebuilt on demand
+               break;
+            }
+            resIndex++;
+         }
       } else {
          tileHeight_ = fullResTileHeightIncludingOverlap_;
          tileWidth_ = fullResTileWidthIncludingOverlap_;
@@ -754,8 +770,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          return; // only tiled images support multiple resolutions
       }
       int oldMaxResolutionLevel = maxResolutionLevel_;
-      maxResolutionLevel_ = Math.min(Math.max(newMaxResolutionLevel, oldMaxResolutionLevel),
-              MAX_RESOLUTION_LEVEL);
+      // Clamp only the requested new level, and never reduce an already-higher maxResolutionLevel_
+      int requestedMaxResolutionLevel = Math.min(newMaxResolutionLevel, MAX_RESOLUTION_LEVEL);
+      maxResolutionLevel_ = Math.max(requestedMaxResolutionLevel, oldMaxResolutionLevel);
       if (fullResStorage_.imageKeys().size() == 0) {
          //nothing to do because data not yet arrived
          return;
@@ -1221,6 +1238,10 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       //put closing on differnt channel so as to not hang up EDT while waiting for finishing
       //but cant put on writing executor because thats shutdown
       if (!loaded_ || writingExecutor_ != null) {
+         if (!writingExecutor_.isShutdown()) {
+            // finishedWriting() was not called; initiate shutdown now so awaitTermination returns
+            writingExecutor_.shutdown();
+         }
          while (true) {
             try {
                if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) {

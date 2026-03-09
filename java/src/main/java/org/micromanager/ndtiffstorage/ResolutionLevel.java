@@ -65,8 +65,7 @@ public final class ResolutionLevel {
          try {
             openExistingDataSet();
          } catch (Exception e) {
-            JOptionPane.showMessageDialog(null, "Can't open dataset. Have you selected the top" +
-                    " level folder of an NDTiffStorage dataset?");
+            throw new IOException("Failed to open dataset at " + dir, e);
          }
       } else{
          try {
