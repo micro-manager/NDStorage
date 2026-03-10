@@ -68,6 +68,12 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    public static final String ROW_AXIS = "row";
    public static final String COL_AXIS = "column";
 
+   // Maximum pyramid level allowed when creating new levels: level 10 = Downsampled_x1024.
+   // Prevents runaway pyramid building when the viewer requests an absurdly deep zoom-out.
+   // This cap is only enforced when adding new levels; existing on-disk levels deeper than
+   // this are loaded without restriction.
+   public static final int MAX_RESOLUTION_LEVEL = 10;
+
    private static final String FULL_RES_SUFFIX = "Full resolution";
    private static final String DOWNSAMPLE_SUFFIX = "Downsampled_x";
    private ResolutionLevel fullResStorage_;
@@ -147,7 +153,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          String path = dir + (dir.endsWith(File.separator) ? "" : File.separator)
                  + "display_settings.txt";
          byte[] data = Files.readAllBytes(Paths.get(path));
-         displaySettings_ = new JSONObject(new String(data));
+         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
       } catch (Exception e) {
          System.err.println("Couldn't read displaysettings");
       }
@@ -171,13 +177,110 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          int resIndex = 1;
          while (true) {
             String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
-                    + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+                    + DOWNSAMPLE_SUFFIX + (1 << resIndex);
             if (!new File(dsDir).exists()) {
                break;
             }
             maxResolutionLevel_ = resIndex;
             lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false,
                     null, this, null));
+            resIndex++;
+         }
+      } else {
+         tileHeight_ = fullResTileHeightIncludingOverlap_;
+         tileWidth_ = fullResTileWidthIncludingOverlap_;
+      }
+   }
+
+   /**
+    * Constructor to load an existing dataset from disk in write-append mode,
+    * allowing additional resolution levels to be built on demand.
+    *
+    * @param dir             Path to the existing NDTiff dataset directory
+    * @param savingQueueSize Size of the async writing task queue
+    * @param debugLogger     Optional debug logger (may be null)
+    */
+   public NDTiffStorage(String dir, int savingQueueSize, Consumer<String> debugLogger)
+           throws IOException {
+      loaded_ = true;
+      finished_ = false;
+      debugLogger_ = debugLogger;
+      lowResStorages_ = new TreeMap<>();
+
+      if (BUFFER_POOL_SIZE > 0) {
+         pooledBuffers_ = new ConcurrentHashMap<Integer, Deque<ByteBuffer>>();
+      } else {
+         pooledBuffers_ = null;
+      }
+
+      writingExecutor_ = Executors.newSingleThreadExecutor(new ThreadFactory() {
+         @Override
+         public Thread newThread(Runnable r) {
+            return new Thread(r, "Multipage Tiff data writing executor");
+         }
+      });
+      writingTaskQueue_ = new LinkedBlockingQueue<Callable<IndexEntryData>>(savingQueueSize);
+
+      dir += (dir.endsWith(File.separator) ? "" : File.separator);
+      if (dir.endsWith(FULL_RES_SUFFIX + File.separator)) {
+         dir = new File(dir).getParent() + File.separator;
+      }
+      // directory_ holds the path without trailing separator, matching the read-only constructor
+      directory_ = dir.substring(0, dir.length() - 1);
+      // prefix_ is used when creating new resolution-level tiff files
+      prefix_ = new File(directory_).getName();
+
+      String fullResDir;
+      if (!new File(dir + FULL_RES_SUFFIX).exists()) {
+         fullResDir = dir;
+         detectedMajorVersion_ = 3;
+      } else {
+         fullResDir = dir + FULL_RES_SUFFIX;
+      }
+
+      fullResStorage_ = new ResolutionLevel(fullResDir, false, null, this, null);
+      summaryMD_ = fullResStorage_.getSummaryMetadata();
+      try {
+         tiled_ = StorageMD.getTiledStorage(summaryMD_);
+      } catch (Exception e) {
+         tiled_ = true;
+      }
+
+      try {
+         String path = dir + "display_settings.txt";
+         byte[] data = Files.readAllBytes(Paths.get(path));
+         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
+      } catch (Exception e) {
+         // display settings optional
+      }
+
+      imageAxes_.addAll(fullResStorage_.imageKeys().stream()
+              .map(s -> IndexEntryData.deserializeAxes(s))
+              .collect(Collectors.toSet()));
+
+      fullResTileHeightIncludingOverlap_ = fullResStorage_.getFirstImageHeight();
+      fullResTileWidthIncludingOverlap_ = fullResStorage_.getFirstImageWidth();
+      if (tiled_) {
+         xOverlap_ = StorageMD.getPixelOverlapX(summaryMD_);
+         yOverlap_ = StorageMD.getPixelOverlapY(summaryMD_);
+         tileWidth_ = fullResTileWidthIncludingOverlap_ - xOverlap_;
+         tileHeight_ = fullResTileHeightIncludingOverlap_ - yOverlap_;
+         // Load existing low-res storages so they are not overwritten when new levels are added
+         int resIndex = 1;
+         while (true) {
+            String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
+                    + DOWNSAMPLE_SUFFIX + (1 << resIndex);
+            File dsDirFile = new File(dsDir);
+            if (!dsDirFile.exists()) {
+               break;
+            }
+            try {
+               lowResStorages_.put(resIndex, new ResolutionLevel(dsDir, false, null, this, null));
+               maxResolutionLevel_ = resIndex;
+            } catch (Exception e) {
+               // Incomplete or corrupt downsample directory; stop here — will be rebuilt on demand
+               break;
+            }
             resIndex++;
          }
       } else {
@@ -669,7 +772,9 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          return; // only tiled images support multiple resolutions
       }
       int oldMaxResolutionLevel = maxResolutionLevel_;
-      maxResolutionLevel_ = Math.max(newMaxResolutionLevel, oldMaxResolutionLevel);
+      // Clamp only the requested new level, and never reduce an already-higher maxResolutionLevel_
+      int requestedMaxResolutionLevel = Math.min(newMaxResolutionLevel, MAX_RESOLUTION_LEVEL);
+      maxResolutionLevel_ = Math.max(requestedMaxResolutionLevel, oldMaxResolutionLevel);
       if (fullResStorage_.imageKeys().size() == 0) {
          //nothing to do because data not yet arrived
          return;
@@ -773,7 +878,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    private void createDownsampledStorage(int resIndex) {
       String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
-              + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+              + DOWNSAMPLE_SUFFIX + (1 << resIndex);
       try {
          createDir(dsDir);
       } catch (Exception ex) {
@@ -1034,7 +1139,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
     * Signal to finish writing and block until everything pending is done.
     */
    public void finishedWriting()  {
-      if (loaded_) {
+      if (loaded_ && writingExecutor_ == null) {
          return;
       }
       if (debugLogger_ != null) {
@@ -1134,7 +1239,11 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private void doClose() {
       //put closing on differnt channel so as to not hang up EDT while waiting for finishing
       //but cant put on writing executor because thats shutdown
-      if (!loaded_) {
+      if (writingExecutor_ != null) {
+         if (!writingExecutor_.isShutdown()) {
+            // finishedWriting() was not called; initiate shutdown now so awaitTermination returns
+            writingExecutor_.shutdown();
+         }
          while (true) {
             try {
                if (writingExecutor_.awaitTermination(10, TimeUnit.MILLISECONDS)) {
