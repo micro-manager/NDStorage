@@ -45,10 +45,10 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.swing.JOptionPane;
 import mmcorej.TaggedImage;
 import mmcorej.org.json.JSONException;
 import mmcorej.org.json.JSONObject;
-import javax.swing.JOptionPane;
 
 
 /**
@@ -68,8 +68,10 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    public static final String ROW_AXIS = "row";
    public static final String COL_AXIS = "column";
 
-   // Maximum pyramid level allowed: level 10 = Downsampled_x1024.
+   // Maximum pyramid level allowed when creating new levels: level 10 = Downsampled_x1024.
    // Prevents runaway pyramid building when the viewer requests an absurdly deep zoom-out.
+   // This cap is only enforced when adding new levels; existing on-disk levels deeper than
+   // this are loaded without restriction.
    public static final int MAX_RESOLUTION_LEVEL = 10;
 
    private static final String FULL_RES_SUFFIX = "Full resolution";
@@ -151,7 +153,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          String path = dir + (dir.endsWith(File.separator) ? "" : File.separator)
                  + "display_settings.txt";
          byte[] data = Files.readAllBytes(Paths.get(path));
-         displaySettings_ = new JSONObject(new String(data));
+         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
       } catch (Exception e) {
          System.err.println("Couldn't read displaysettings");
       }
@@ -175,7 +177,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          int resIndex = 1;
          while (true) {
             String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
-                    + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+                    + DOWNSAMPLE_SUFFIX + (1 << resIndex);
             if (!new File(dsDir).exists()) {
                break;
             }
@@ -247,7 +249,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       try {
          String path = dir + "display_settings.txt";
          byte[] data = Files.readAllBytes(Paths.get(path));
-         displaySettings_ = new JSONObject(new String(data));
+         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
       } catch (Exception e) {
          // display settings optional
       }
@@ -267,7 +269,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          int resIndex = 1;
          while (true) {
             String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
-                    + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+                    + DOWNSAMPLE_SUFFIX + (1 << resIndex);
             File dsDirFile = new File(dsDir);
             if (!dsDirFile.exists()) {
                break;
@@ -876,7 +878,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
 
    private void createDownsampledStorage(int resIndex) {
       String dsDir = directory_ + (directory_.endsWith(File.separator) ? "" : File.separator)
-              + DOWNSAMPLE_SUFFIX + (int) Math.pow(2, resIndex);
+              + DOWNSAMPLE_SUFFIX + (1 << resIndex);
       try {
          createDir(dsDir);
       } catch (Exception ex) {
@@ -1237,7 +1239,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
    private void doClose() {
       //put closing on differnt channel so as to not hang up EDT while waiting for finishing
       //but cant put on writing executor because thats shutdown
-      if (!loaded_ || writingExecutor_ != null) {
+      if (writingExecutor_ != null) {
          if (!writingExecutor_.isShutdown()) {
             // finishedWriting() was not called; initiate shutdown now so awaitTermination returns
             writingExecutor_.shutdown();
