@@ -24,7 +24,7 @@ jobs:
         os: [
 #           ubuntu-lastest,
           windows-latest,
-          macos-latest
+          macos-15-intel
         ]
     steps:
       - uses: actions/checkout@v2
