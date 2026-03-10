@@ -44,6 +44,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
 
         self.file_io = file_io
         self._lock = threading.RLock()
+        self._put_image_lock = threading.Lock()
         if writable:
             self.major_version = MAJOR_VERSION
             self.minor_version = MINOR_VERSION
@@ -166,6 +167,8 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
             return self._do_read_metadata(axes)
 
     def put_image(self, coordinates, image, metadata):
+        # wait for put_image to finish before calling it again.
+        self._put_image_lock.acquire()
         if not self._writable:
             raise RuntimeError("Cannot write to a read-only dataset")
 
@@ -203,6 +206,7 @@ class NDTiffDataset(NDStorageBase, WritableNDStorageAPI):
         self._index_file.write(index_data_entry.as_byte_buffer().getvalue())
         # remove from pending images
         del self._write_pending_images[frozenset(coordinates.items())]
+        self._put_image_lock.release()
 
     def finish(self):
         if self.current_writer is not None:
