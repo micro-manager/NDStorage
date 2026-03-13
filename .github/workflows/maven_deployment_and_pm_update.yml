@@ -43,7 +43,7 @@ jobs:
         run: cd java && mvn deploy -Dgpg.passphrase=${{ secrets.MAVEN_GPG_PASSPHRASE }}
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.MAVEN_SECRET }}
+          MAVEN_SECRET: ${{ secrets.MAVEN_SECRET }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
   update-pycromanger:
