@@ -314,17 +314,24 @@ public class NDTiffWriter {
    private void overwritePixelsReopening(final Buffer buffer, final long position)
            throws IOException {
       buffer.rewind();
+      ByteBuffer byteBuffer = (ByteBuffer) buffer;
       RandomAccessFile raf = null;
       try {
          raf = new RandomAccessFile(filename_, "rw");
          FileChannel ch = raf.getChannel();
-         ch.write((ByteBuffer) buffer, position);
+         // A single positional write is not guaranteed to write the whole buffer; loop
+         // until it is fully written, advancing the file position by the bytes written.
+         long pos = position;
+         while (byteBuffer.hasRemaining()) {
+            pos += ch.write(byteBuffer, pos);
+         }
       } finally {
+         // Recycle in finally so a write/IO failure cannot leak a large direct buffer.
+         masterMPTiffStorage_.tryRecycleLargeBuffer(byteBuffer);
          if (raf != null) {
             raf.close();
          }
       }
-      masterMPTiffStorage_.tryRecycleLargeBuffer((ByteBuffer) buffer);
    }
 
    private IndexEntryData writeIFD(String indexKey, Object pixels, byte[] metadata,
