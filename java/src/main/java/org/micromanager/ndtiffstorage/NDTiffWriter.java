@@ -292,7 +292,39 @@ public class NDTiffWriter {
    public void overwritePixels(String indexKey, Object pixels, boolean rgb) throws IOException {
       long pixelOffset = indexMap_.get(indexKey).pixOffset_;
       Buffer pixBuff = getPixelBuffer(pixels, rgb);
+      if (fileChannel_ == null) {
+         // This writer has already been finishedWriting() (its file was rotated/closed as
+         // the file set grew). Pixels still need to be overwritten in place -- e.g. when
+         // building low-res pyramid levels, a downsampled tile receives contributions from
+         // several full-res tiles, and the tile's first write may live in an earlier,
+         // now-closed file. Reopen the file read-write just for this in-place write, then
+         // close it again so we don't leak file descriptors for every rotated file.
+         overwritePixelsReopening(pixBuff, pixelOffset);
+         return;
+      }
       fileChannelWrite(pixBuff, pixelOffset);
+   }
+
+   /**
+    * Overwrite pixels in place in a file whose channel has been closed (after
+    * finishedWriting()). Opens the existing file read-write at {@code position}, writes the
+    * buffer, and closes -- the writer stays in its finished state. The index entry's
+    * pixOffset_ is an absolute file offset, so no header re-parsing is needed.
+    */
+   private void overwritePixelsReopening(final Buffer buffer, final long position)
+           throws IOException {
+      buffer.rewind();
+      RandomAccessFile raf = null;
+      try {
+         raf = new RandomAccessFile(filename_, "rw");
+         FileChannel ch = raf.getChannel();
+         ch.write((ByteBuffer) buffer, position);
+      } finally {
+         if (raf != null) {
+            raf.close();
+         }
+      }
+      masterMPTiffStorage_.tryRecycleLargeBuffer((ByteBuffer) buffer);
    }
 
    private IndexEntryData writeIFD(String indexKey, Object pixels, byte[] metadata,
