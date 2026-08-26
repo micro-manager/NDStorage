@@ -71,8 +71,12 @@ The NDTiff format is optimized for size, speed, and flexibility. Several optimiz
 ## Multi-resolution pyramids
 An additional feature of this library is the use [multi-resolution pyramids](https://en.wikipedia.org/wiki/Pyramid_%28image_processing%29). Having the data in this form is very useful for image processing and visualization of extremely large images, because the data can be visualized/analyzed at multiple scales without having to pull the entire, full-resolution image into memory. This is implemented by using multiple parallel NDTiffStorage datasets, each of which corresponds to one resolution level. It assumes multiple images are laid out in regular an XY grid, and downsamples along these X and Y dimensions.
 
-## MATLAB Support
-For users who need to utilize MATLAB-based image analysis tools, a dedicated importer for MATLAB is available from https://github.com/dickinson-lab/NDTiff_MATLAB. It loads multi-dimensional datasets into intuitively-shaped 4-D or 5-D matrices, supports accessing only desired regions of the data, and provides access to the summary metadata. 
+## MATLAB and FIJI Support
+For users who need to utilize image analysis tools in MATLAB or FIJI, the Dickinson lab has written importer plugins. 
+
+A dedicated importer for MATLAB is available from https://github.com/dickinson-lab/NDTiff_MATLAB. It loads multi-dimensional datasets into intuitively-shaped 4-D or 5-D matrices, supports accessing only desired regions of the data, and provides access to the summary metadata. 
+
+A FIJI importer is available from https://github.com/dickinson-lab/NDTiff-FIJI.  After installing, drag and drop any NDTiff dataset onto the main FIJI window and it should open as a correctly dimensioned hyperstack. 
 
 # Specification for NDTiff v3.x
 
