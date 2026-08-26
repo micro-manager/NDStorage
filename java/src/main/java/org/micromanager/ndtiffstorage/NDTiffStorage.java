@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -149,14 +150,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          tiled_ = true; //Backwards compat
       }
 
-      try {
-         String path = dir + (dir.endsWith(File.separator) ? "" : File.separator)
-                 + "display_settings.txt";
-         byte[] data = Files.readAllBytes(Paths.get(path));
-         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
-      } catch (Exception e) {
-         System.err.println("Couldn't read displaysettings");
-      }
+      displaySettings_ = readDisplaySettings(dir);
 
       imageAxes_.addAll(fullResStorage_.imageKeys().stream()
               .map(s -> IndexEntryData.deserializeAxes(s))
@@ -246,13 +240,7 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
          tiled_ = true;
       }
 
-      try {
-         String path = dir + "display_settings.txt";
-         byte[] data = Files.readAllBytes(Paths.get(path));
-         displaySettings_ = new JSONObject(new String(data, StandardCharsets.UTF_8));
-      } catch (Exception e) {
-         // display settings optional
-      }
+      displaySettings_ = readDisplaySettings(dir);
 
       imageAxes_.addAll(fullResStorage_.imageKeys().stream()
               .map(s -> IndexEntryData.deserializeAxes(s))
@@ -397,6 +385,31 @@ public class NDTiffStorage implements NDTiffAPI, MultiresNDTiffAPI {
       } catch (JSONException e) {
          throw new RuntimeException(e);
       }
+   }
+
+   /**
+    * Reads display settings from disk. Recent versions of Micro-Manager write
+    * DisplaySettings.json (a Property Map); older versions wrote display_settings.txt.
+    * Both are tried, preferring the newer name, since the file is optional and only
+    * gets written if the dataset was ever shown live in Micro-Manager's viewer.
+    */
+   private JSONObject readDisplaySettings(String dir) {
+      dir += (dir.endsWith(File.separator) ? "" : File.separator);
+      for (String filename : new String[] {"DisplaySettings.json", "display_settings.txt"}) {
+         Path path = Paths.get(dir + filename);
+         if (!Files.exists(path)) {
+            continue;
+         }
+         try {
+            byte[] data = Files.readAllBytes(path);
+            return new JSONObject(new String(data, StandardCharsets.UTF_8));
+         } catch (Exception e) {
+            if (debugLogger_ != null) {
+               debugLogger_.accept("Couldn't parse " + filename + ": " + e.getMessage());
+            }
+         }
+      }
+      return null;
    }
 
    public String getUniqueAcqName() {
