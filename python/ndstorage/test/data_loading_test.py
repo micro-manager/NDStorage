@@ -65,8 +65,10 @@ def test_v3_2_multichannel(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'ndtiff3.2_multichannel')
     dataset = Dataset(data_path)
     assert(np.mean(dataset.read_image(channel='DAPI', time=0, z=1)) > 0)
-    for channel_name, correct_channel_name in zip(dataset.get_channel_names(), ['DAPI', 'FITC']):
-        assert(channel_name == correct_channel_name)
+    assert dataset.get_channel_names() == ['DAPI', 'FITC']
+    # string-valued axes can also be indexed by integer
+    assert np.array_equal(dataset.read_image(channel=1, time=0, z=1),
+                          dataset.read_image(channel='FITC', time=0, z=1))
 
 def test_v3_2_multichannel_axis_sorting(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'ndtiff3.2_multichannel')
@@ -102,6 +104,9 @@ def test_v3_2_no_magellan_explore_channels(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_multi_channel')
     dataset = Dataset(data_path)
     assert(np.sum(np.array(dataset.as_array(stitched=True)[0])) > 0)
+    # the same integer channel names the same channel at every resolution level
+    for level in dataset.res_levels.values():
+        assert level.get_channel_names() == ['Cy5', 'DAPI', 'FITC', 'Rhodamine']
 
 def test_v3_2_no_magellan_explore_no_channels(test_data_path):
     data_path = os.path.join(test_data_path, 'v3', 'no_magellan_explore_no_channel')
@@ -143,6 +148,11 @@ def test_labeled_positions(test_data_path):
     pixel_00 = (1, 2, 0)
     for idx, image in enumerate(data):
         assert image[0, 0] == pixel_00[idx]
+
+    # Integer positions on a string axis index the sorted values, like as_array
+    for idx, position_name in enumerate(('Pos0', 'Pos1', 'Pos2')):
+        assert dataset.read_metadata(position=idx)['PositionName'] == position_name
+        assert np.array_equal(dataset.read_image(position=idx), data[idx])
 
 def test_unordered_z_axis(test_data_path):
     """

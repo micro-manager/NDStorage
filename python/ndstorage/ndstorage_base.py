@@ -643,6 +643,11 @@ class NDStorageBase(NDStorageAPI):
                     self.axes[axis_name] = SortedSet()
                     self.axes_types[axis_name] = type(position)
                 self.axes[axis_name].add(position)
+        # Integer positions on string-valued axes index the sorted values,
+        # matching the order of as_array() and every resolution level
+        for axis_name, axis_type in self.axes_types.items():
+            if axis_type is str:
+                self._string_axes_values[axis_name] = list(self.axes[axis_name])
         # Sort axes according to _AXIS_ORDER
         self.axes = dict(sorted(self.axes.items(), key=_get_axis_order_key, reverse=True))
 
