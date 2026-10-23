@@ -115,3 +115,33 @@ def test_write_full_dataset_RAM():
 
 
 
+
+
+@pytest.mark.parametrize("overlap", [(10, 10), (0, 10), (10, 0), (1, 3), (0, 0)])
+def test_stitched_overlap(test_data_path, overlap):
+    """
+    Stitch a 2x2 grid of tiles whose overlap may be zero along one axis
+    """
+    overlap_y, overlap_x = overlap
+    full_path = os.path.join(test_data_path, 'test_stitched_overlap')
+    dataset = NDTiffDataset(full_path, summary_metadata={'GridPixelOverlapY': overlap_y,
+                                                         'GridPixelOverlapX': overlap_x},
+                            writable=True)
+    image_height = 64
+    image_width = 80
+    for row in range(2):
+        for column in range(2):
+            pixels = np.full((image_height, image_width), 1 + 2 * row + column, dtype=np.uint16)
+            dataset.put_image({'row': row, 'column': column}, pixels, {})
+    dataset.finish()
+
+    dataset = NDTiffDataset(full_path)
+    dataset._full_resolution = True
+    stitched = dataset.as_array(stitched=True)
+    tile_height = image_height - overlap_y
+    tile_width = image_width - overlap_x
+    expected = np.repeat(np.repeat(np.array([[1, 2], [3, 4]], dtype=np.uint16),
+                                   tile_height, axis=0), tile_width, axis=1)
+    assert stitched.shape == expected.shape
+    assert np.array_equal(np.asarray(stitched), expected)
+    dataset.close()

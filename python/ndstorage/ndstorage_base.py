@@ -549,10 +549,11 @@ class NDStorageBase(NDStorageAPI):
                         tile = self.read_image(**axes, **axes_to_slice, row=row, column=column)
                         # remove half of the overlap around each tile so that that image stitches correctly
                         # only need this for full resoution because downsampled ones already have the edges removed
-                        if np.any(overlap[0] > 0) and full_resolution:
+                        if np.any(overlap > 0) and full_resolution:
                             min_index = np.floor(overlap / 2).astype(np.int_)
                             max_index = np.ceil(overlap / 2).astype(np.int_)
-                            tile = tile[min_index[0]:-max_index[0], min_index[1]:-max_index[1]]
+                            tile = tile[min_index[0]:tile.shape[0] - max_index[0],
+                                        min_index[1]:tile.shape[1] - max_index[1]]
                         blocks[-1].append(tile)
 
             if rgb:
